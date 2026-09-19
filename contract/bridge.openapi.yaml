@@ -1,0 +1,518 @@
+openapi: 3.1.0
+info:
+  title: garage-opener bridge API
+  version: 1.0.0
+  license: { name: MIT }
+  description: |
+    Self-hosted bridge between the app and a UniFi Protect console (USL-Relay pulse output + garage-mounted
+    all-in-one sensor). The sensor is the only source of truth for door state; the relay output state is never
+    door state. All `/v1/*` routes except the Alarm Manager webhook require a bearer token from `BRIDGE_TOKENS`.
+servers:
+  - url: http://localhost:8787
+    description: local dev / docker
+security:
+  - bearerAuth: []
+tags:
+  - name: door
+    description: Door state and commands
+  - name: hold
+    description: Hold-open flag
+  - name: events
+    description: Server-sent events
+  - name: audit
+    description: Audit log
+  - name: discovery
+    description: Console discovery and door mapping
+  - name: webhooks
+    description: Alarm Manager inbound
+  - name: mock
+    description: Simulator control (mock mode)
+  - name: system
+    description: Health
+paths:
+  /healthz:
+    get:
+      tags: [system]
+      operationId: getHealth
+      summary: Liveness and readiness
+      security: []
+      responses:
+        "200":
+          description: Bridge is up. `protect.ok=false` means the console is unreachable (still 200).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+  /v1/state:
+    get:
+      tags: [door]
+      operationId: getState
+      summary: Current door state, hold-open, sensor and relay health
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/State" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/door/open:
+    post:
+      tags: [door]
+      operationId: openDoor
+      summary: Open the door (idempotent, single-flight, verified)
+      description: |
+        No pulse is sent if the door is already OPEN. While the door is moving a second command is rejected with 409.
+        With `wait=true` (default) the response is returned after `door.travelSeconds` with the verified outcome;
+        `ok=false` and `to=STUCK` when the sensor did not confirm.
+      parameters: [{ $ref: "#/components/parameters/Wait" }, { $ref: "#/components/parameters/Source" }]
+      responses:
+        "200": { $ref: "#/components/responses/CommandResult" }
+        "202": { $ref: "#/components/responses/CommandAccepted" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ProtectUnavailable" }
+  /v1/door/close:
+    post:
+      tags: [door]
+      operationId: closeDoor
+      summary: Close the door (idempotent, single-flight, verified)
+      parameters: [{ $ref: "#/components/parameters/Wait" }, { $ref: "#/components/parameters/Source" }]
+      responses:
+        "200": { $ref: "#/components/responses/CommandResult" }
+        "202": { $ref: "#/components/responses/CommandAccepted" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ProtectUnavailable" }
+  /v1/door/toggle:
+    post:
+      tags: [door]
+      operationId: toggleDoor
+      summary: Pulse the relay once regardless of state (not for widgets or Siri)
+      parameters: [{ $ref: "#/components/parameters/Wait" }, { $ref: "#/components/parameters/Source" }]
+      responses:
+        "200": { $ref: "#/components/responses/CommandResult" }
+        "202": { $ref: "#/components/responses/CommandAccepted" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ProtectUnavailable" }
+  /v1/hold:
+    post:
+      tags: [hold]
+      operationId: setHold
+      summary: Hold the door open (suppress alerts) for N minutes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HoldRequest" }
+      responses:
+        "200":
+          description: Hold set
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Hold" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    delete:
+      tags: [hold]
+      operationId: clearHold
+      summary: Clear the hold-open flag
+      responses:
+        "204": { description: "Cleared (also when no hold was active)" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/events:
+    get:
+      tags: [events]
+      operationId: streamEvents
+      summary: Server-sent events stream
+      description: |
+        `text/event-stream`. Event names: `state`, `command`, `alert`, `hold`, `vehicle`, `heartbeat`.
+        Each `data:` line is the JSON of the matching schema (`State`, `CommandResult`, `Alert`, `Hold`, `VehiclePresence`).
+        A `state` event is sent immediately on connect. Bearer token may be passed as `?token=` for EventSource clients.
+      parameters:
+        - name: token
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: Stream
+          content:
+            text/event-stream:
+              schema: { $ref: "#/components/schemas/SseEvent" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/audit:
+    get:
+      tags: [audit]
+      operationId: listAudit
+      summary: Command and alert audit log, newest first
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 50 }
+        - name: before
+          in: query
+          description: Return entries with id lower than this
+          schema: { type: integer }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries]
+                properties:
+                  entries:
+                    type: array
+                    items: { $ref: "#/components/schemas/AuditEntry" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/discovery:
+    get:
+      tags: [discovery]
+      operationId: getDiscovery
+      summary: Relays, sensors and cameras seen on the console plus the suggested/current door mapping
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Discovery" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/ProtectUnavailable" }
+  /v1/webhooks/alarm-manager/{secret}:
+    parameters:
+      - name: secret
+        in: path
+        required: true
+        description: Per-install secret (`WEBHOOK_SECRET`). Wrong secret → 404, never 401, to avoid enumeration.
+        schema: { type: string, minLength: 16 }
+    post:
+      tags: [webhooks]
+      operationId: alarmManagerWebhookPost
+      summary: UniFi Protect Alarm Manager webhook target (POST)
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AlarmManagerPayload" }
+      responses:
+        "204": { description: "Accepted and processed (thumbnails discarded)" }
+        "404": { description: "Unknown secret" }
+    get:
+      tags: [webhooks]
+      operationId: alarmManagerWebhookGet
+      summary: UniFi Protect Alarm Manager webhook target (GET variant)
+      security: []
+      responses:
+        "204": { description: "Accepted" }
+        "404": { description: "Unknown secret" }
+  /v1/mock/{action}:
+    post:
+      tags: [mock]
+      operationId: mockAction
+      summary: Drive the in-memory Protect simulator (BRIDGE_MODE=mock only)
+      description: State is keyed by bearer token so concurrent reviewers never collide; it expires after 60 min idle.
+      parameters:
+        - name: action
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [vehicle-arrived, vehicle-left, plate-seen, reverse-next-close, reset]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                plate: { type: string, description: "Required for `plate-seen`" }
+      responses:
+        "200":
+          description: Applied; returns the resulting state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/State" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: "Not in mock mode" }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    Wait:
+      name: wait
+      in: query
+      required: false
+      description: Wait for verification (default true). `false` returns 202 immediately.
+      schema: { type: boolean, default: true }
+    Source:
+      name: source
+      in: query
+      required: false
+      description: Free-text origin recorded in the audit log (e.g. `app`, `widget`, `siri`, `watch`, `shortcut`).
+      schema: { type: string, maxLength: 32 }
+  responses:
+    CommandResult:
+      description: Verified outcome
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/CommandResult" }
+    CommandAccepted:
+      description: Command accepted; follow `/v1/events` or poll `/v1/state`
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/CommandAccepted" }
+    Unauthorized:
+      description: Missing or invalid bearer token
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: Door is moving or another command is in flight
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ProtectUnavailable:
+      description: Console unreachable
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    DoorState:
+      type: string
+      enum: [CLOSED, OPENING, OPEN, CLOSING, UNKNOWN, STUCK]
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error: { type: string, description: "Machine code (e.g. `unauthorized`, `door_busy`, `protect_unavailable`, `validation`)" }
+        message: { type: string }
+        details: { type: object, additionalProperties: true }
+    Health:
+      type: object
+      required: [ok, mode, version, protect]
+      properties:
+        ok: { type: boolean }
+        mode: { type: string, enum: [live, mock] }
+        version: { type: string }
+        protect:
+          type: object
+          required: [ok]
+          properties:
+            ok: { type: boolean }
+            applicationVersion: { type: string }
+            lastSuccessAt: { type: string, format: date-time }
+            error: { type: string }
+    Battery:
+      type: object
+      required: [isLow]
+      properties:
+        percentage: { type: [integer, "null"], minimum: 0, maximum: 100 }
+        isLow: { type: boolean }
+    SensorInfo:
+      type: object
+      required: [id, name, connected, isOpened, battery]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        connected: { type: boolean }
+        isOpened: { type: boolean }
+        openStatusChangedAt: { type: string, format: date-time }
+        battery: { $ref: "#/components/schemas/Battery" }
+        signalQuality: { type: [integer, "null"] }
+    RelayInfo:
+      type: object
+      required: [id, outputId, name, connected, pulseMode]
+      properties:
+        id: { type: string }
+        outputId: { type: integer, description: "Numeric output index on the relay (0 or 1)" }
+        name: { type: string }
+        connected: { type: boolean }
+        pulseMode: { type: string, enum: [native, emulated] }
+        pulseDurationMs: { type: [integer, "null"] }
+    Hold:
+      type: object
+      required: [active]
+      properties:
+        active: { type: boolean }
+        until: { type: string, format: date-time }
+        minutes: { type: integer }
+        setAt: { type: string, format: date-time }
+    HoldRequest:
+      type: object
+      required: [minutes]
+      properties:
+        minutes: { type: integer, minimum: 1, maximum: 1440 }
+    VehiclePresence:
+      type: object
+      required: [present]
+      properties:
+        present: { type: boolean }
+        since: { type: string, format: date-time }
+        source: { type: string, enum: [camera-heuristic, mock] }
+        note: { type: string, description: "Heuristic from interior camera vehicle detections until LPR" }
+    State:
+      type: object
+      required: [door, isOpened, since, hold, sensor, relay, mode, updatedAt, connectionOk]
+      properties:
+        door: { $ref: "#/components/schemas/DoorState" }
+        isOpened: { type: boolean, description: "Raw sensor contact" }
+        since: { type: string, format: date-time, description: "When the current `door` state started" }
+        lastChangedAt: { type: string, format: date-time, description: "Last sensor contact change" }
+        hold: { $ref: "#/components/schemas/Hold" }
+        sensor: { $ref: "#/components/schemas/SensorInfo" }
+        relay: { $ref: "#/components/schemas/RelayInfo" }
+        vehicle: { $ref: "#/components/schemas/VehiclePresence" }
+        mode: { type: string, enum: [live, mock] }
+        connectionOk: { type: boolean, description: "Console reachable at last poll" }
+        updatedAt: { type: string, format: date-time }
+        openTooLongMinutes: { type: integer }
+        travelSeconds: { type: integer }
+    CommandResult:
+      type: object
+      required: [ok, command, from, to, pulsed, verified, auditId, startedAt, finishedAt]
+      properties:
+        ok: { type: boolean }
+        command: { type: string, enum: [open, close, toggle] }
+        from: { $ref: "#/components/schemas/DoorState" }
+        to: { $ref: "#/components/schemas/DoorState" }
+        pulsed: { type: boolean, description: "false when already in the target state" }
+        verified: { type: boolean }
+        auditId: { type: integer }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+        error: { type: string }
+    CommandAccepted:
+      type: object
+      required: [accepted, command, auditId, expectedBy]
+      properties:
+        accepted: { type: boolean, const: true }
+        command: { type: string, enum: [open, close, toggle] }
+        auditId: { type: integer }
+        expectedBy: { type: string, format: date-time }
+    Alert:
+      type: object
+      required: [id, rule, title, body, createdAt, actions]
+      properties:
+        id: { type: string }
+        rule: { type: string, enum: [open-too-long, nightly-check, vehicle-inside-door-open, vehicle-left-door-open, lpr-auto-open, lpr-auto-close] }
+        title: { type: string }
+        body: { type: string }
+        createdAt: { type: string, format: date-time }
+        actions:
+          type: array
+          items: { type: string, enum: [close-now, hold-2h, ignore, undo] }
+        undoUntil: { type: string, format: date-time }
+    SseEvent:
+      type: object
+      description: One SSE frame; `event` is the frame name and `data` its JSON payload.
+      required: [event, data]
+      properties:
+        event: { type: string, enum: [state, command, alert, hold, vehicle, heartbeat] }
+        data:
+          oneOf:
+            - { $ref: "#/components/schemas/State" }
+            - { $ref: "#/components/schemas/CommandResult" }
+            - { $ref: "#/components/schemas/Alert" }
+            - { $ref: "#/components/schemas/Hold" }
+            - { $ref: "#/components/schemas/VehiclePresence" }
+            - { type: object, properties: { at: { type: string, format: date-time } } }
+    AuditEntry:
+      type: object
+      required: [id, at, kind, source, outcome]
+      properties:
+        id: { type: integer }
+        at: { type: string, format: date-time }
+        kind: { type: string, enum: [command, alert, hold, webhook, auto-action, mock] }
+        source: { type: string }
+        command: { type: string }
+        from: { $ref: "#/components/schemas/DoorState" }
+        to: { $ref: "#/components/schemas/DoorState" }
+        outcome: { type: string, enum: [ok, noop, failed, rejected, notified, undone] }
+        detail: { type: string }
+    Discovery:
+      type: object
+      required: [relays, sensors, cameras, current, autoPaired]
+      properties:
+        relays:
+          type: array
+          items:
+            type: object
+            required: [id, name, outputs]
+            properties:
+              id: { type: string }
+              name: { type: string }
+              connected: { type: boolean }
+              outputs:
+                type: array
+                items:
+                  type: object
+                  required: [id]
+                  properties:
+                    id: { type: integer }
+                    name: { type: [string, "null"] }
+                    type: { type: [string, "null"], description: "`garageDoor` when configured as Pulse" }
+                    pulseDurationMs: { type: [integer, "null"] }
+        sensors:
+          type: array
+          items:
+            type: object
+            required: [id, name, mountType, isOpened]
+            properties:
+              id: { type: string }
+              name: { type: string }
+              mountType: { type: string }
+              isOpened: { type: boolean }
+              connected: { type: boolean }
+        cameras:
+          type: array
+          items:
+            type: object
+            required: [id, name]
+            properties:
+              id: { type: string }
+              name: { type: string }
+              smartDetectTypes:
+                type: array
+                items: { type: string }
+        suggested: { $ref: "#/components/schemas/DoorMapping" }
+        current: { $ref: "#/components/schemas/DoorMapping" }
+        autoPaired: { type: boolean }
+    DoorMapping:
+      type: object
+      required: [relayId, outputId, sensorId]
+      properties:
+        relayId: { type: string }
+        outputId: { type: integer }
+        sensorId: { type: string }
+        interiorCameraId: { type: [string, "null"] }
+        drivewayCameraId: { type: [string, "null"] }
+    AlarmManagerPayload:
+      type: object
+      description: Best-effort shape; the bridge tolerates unknown fields and logs raw payloads at debug.
+      additionalProperties: true
+      properties:
+        alarm:
+          type: object
+          additionalProperties: true
+          properties:
+            name: { type: string }
+            triggers:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+                properties:
+                  key: { type: string }
+                  device: { type: string }
+                  value: { type: string }
+        timestamp: { type: integer }

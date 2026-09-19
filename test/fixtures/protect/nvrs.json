@@ -1,0 +1,21 @@
+{
+  "id": "62b290a902897703e70003e9",
+  "modelKey": "nvr",
+  "name": "pDMSE",
+  "type": "UDM-PRO-SE",
+  "doorbellSettings": {
+    "defaultMessageText": "WELCOME",
+    "defaultMessageResetTimeoutMs": 60000,
+    "customMessages": [],
+    "customImages": []
+  },
+  "armMode": {
+    "status": "disabled",
+    "armedAt": null,
+    "willBeArmedAt": null,
+    "breachDetectedAt": null,
+    "breachEventCount": 0,
+    "breachTriggerEventId": null,
+    "breachEventId": null
+  }
+}

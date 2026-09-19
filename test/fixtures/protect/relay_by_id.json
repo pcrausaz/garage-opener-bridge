@@ -1,0 +1,59 @@
+{
+  "id": "6aa43ec903253903e401d542",
+  "modelKey": "relay",
+  "state": "CONNECTED",
+  "name": "Garage Relay",
+  "type": "USL-Relay-US",
+  "ledSettings": {
+    "isEnabled": true
+  },
+  "outputs": [
+    {
+      "id": 0,
+      "name": "Garage Door",
+      "type": "garageDoor",
+      "delay": null,
+      "pulseDuration": 100,
+      "state": "off",
+      "rebootState": "restore"
+    },
+    {
+      "id": 1,
+      "name": null,
+      "type": null,
+      "delay": null,
+      "pulseDuration": null,
+      "state": "off",
+      "rebootState": "off"
+    }
+  ],
+  "inputs": [
+    {
+      "id": 0,
+      "name": null,
+      "state": null,
+      "actionTrigger": null,
+      "actionType": null,
+      "actionOutputId": null
+    },
+    {
+      "id": 1,
+      "name": null,
+      "state": null,
+      "actionTrigger": null,
+      "actionType": null,
+      "actionOutputId": null
+    }
+  ],
+  "wirelessConnectionState": {
+    "signalState": {
+      "signalQuality": 100,
+      "signalStrength": -58
+    },
+    "batteryStatus": {
+      "percentage": null,
+      "isLow": false
+    },
+    "bridge": "6aa3595a01167403e453f1bb"
+  }
+}

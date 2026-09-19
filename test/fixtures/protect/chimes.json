@@ -1,0 +1,20 @@
+[
+  {
+    "id": "64e800df036b1103e400c0ba",
+    "modelKey": "chime",
+    "state": "CONNECTED",
+    "name": "Door Bell Chime",
+    "type": "UP Chime",
+    "cameraIds": [
+      "64deac42014d1103e400041b"
+    ],
+    "ringSettings": [
+      {
+        "cameraId": "64deac42014d1103e400041b",
+        "volume": 81,
+        "ringtoneId": "66d18122012c5603e40003ee",
+        "repeatTimes": 1
+      }
+    ]
+  }
+]

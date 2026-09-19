@@ -1,0 +1,109 @@
+{
+  "id": "6609938d012d0803e408748d",
+  "modelKey": "sensor",
+  "state": "CONNECTED",
+  "name": "Garage Door State",
+  "type": "UFP-SENSE",
+  "mountType": "garage",
+  "batteryStatus": {
+    "percentage": 76,
+    "isLow": false
+  },
+  "featureFlags": {
+    "temperature": {
+      "channelCount": 1
+    },
+    "humidity": {
+      "channelCount": 1
+    },
+    "light": {
+      "channelCount": 1
+    },
+    "motion": {
+      "channelCount": 1
+    },
+    "waterLeak": {
+      "channelCount": 1
+    },
+    "open": {
+      "channelCount": 1
+    },
+    "tamper": {
+      "channelCount": 1
+    },
+    "smoke": {
+      "channelCount": 1
+    }
+  },
+  "stats": {
+    "light": {
+      "value": null,
+      "status": "unknown"
+    },
+    "humidity": {
+      "value": null,
+      "status": "unknown"
+    },
+    "temperature": {
+      "value": null,
+      "status": "unknown"
+    }
+  },
+  "lightSettings": {
+    "isEnabled": false,
+    "margin": 10,
+    "lowThreshold": null,
+    "highThreshold": null
+  },
+  "humiditySettings": {
+    "isEnabled": false,
+    "margin": 1,
+    "lowThreshold": 30,
+    "highThreshold": 81
+  },
+  "temperatureSettings": {
+    "isEnabled": false,
+    "margin": 0.1,
+    "lowThreshold": 18,
+    "highThreshold": 30
+  },
+  "isOpened": false,
+  "openStatusChangedAt": 1789585332240,
+  "isMotionDetected": false,
+  "motionDetectedAt": 1789585332890,
+  "motionSettings": {
+    "isEnabled": true,
+    "sensitivity": 47,
+    "sensitivityWhenArmed": 50
+  },
+  "glassBreakSettings": {
+    "isEnabled": false,
+    "sensitivity": 25,
+    "sensitivityWhenArmed": 50
+  },
+  "scheduleMode": "always",
+  "armProfileIds": null,
+  "hasCustomSensitivityWhenArmed": false,
+  "alarmTriggeredAt": null,
+  "alarmSettings": {
+    "isEnabled": false
+  },
+  "leakDetectedAt": null,
+  "externalLeakDetectedAt": null,
+  "leakSettings": {
+    "isInternalEnabled": true,
+    "isExternalEnabled": false
+  },
+  "tamperingDetectedAt": null,
+  "wirelessConnectionState": {
+    "signalState": {
+      "signalQuality": 80,
+      "signalStrength": -58
+    },
+    "batteryStatus": {
+      "percentage": 76,
+      "isLow": false
+    },
+    "bridge": "651471db00d98b03e4022b23"
+  }
+}

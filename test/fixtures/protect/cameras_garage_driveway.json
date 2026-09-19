@@ -1,0 +1,125 @@
+[
+  {
+    "id": "650b2b3c03738b03e4013954",
+    "modelKey": "camera",
+    "state": "CONNECTED",
+    "name": "Garage (G4 Instant)",
+    "type": "UVC G4 Instant",
+    "isMicEnabled": true,
+    "osdSettings": {
+      "isNameEnabled": true,
+      "isDateEnabled": true,
+      "isLogoEnabled": false,
+      "isDebugEnabled": false,
+      "overlayLocation": "topLeft"
+    },
+    "ledSettings": {
+      "isEnabled": true,
+      "welcomeLed": true,
+      "floodLed": true
+    },
+    "micVolume": 100,
+    "activePatrolSlot": null,
+    "videoMode": "default",
+    "hdrType": "auto",
+    "featureFlags": {
+      "supportFullHdSnapshot": false,
+      "hasHdr": true,
+      "smartDetectTypes": [
+        "person",
+        "vehicle",
+        "animal"
+      ],
+      "smartDetectAudioTypes": [
+        "alrmSmoke",
+        "alrmCmonx",
+        "alrmBabyCry",
+        "alrmSpeak"
+      ],
+      "videoModes": [
+        "default",
+        "sport",
+        "slowShutter"
+      ],
+      "hasMic": true,
+      "hasLedStatus": true,
+      "hasSpeaker": true
+    },
+    "smartDetectSettings": {
+      "objectTypes": [
+        "person",
+        "vehicle",
+        "animal"
+      ],
+      "audioTypes": [
+        "smoke_cmonx",
+        "alrmSmoke",
+        "alrmCmonx",
+        "alrmBabyCry"
+      ]
+    },
+    "hasPackageCamera": false
+  },
+  {
+    "id": "64dd4c4303e52b03e4008041",
+    "modelKey": "camera",
+    "state": "CONNECTED",
+    "name": "Driveway (G5 Dome)",
+    "type": "UVC G5 Dome",
+    "isMicEnabled": true,
+    "osdSettings": {
+      "isNameEnabled": true,
+      "isDateEnabled": true,
+      "isLogoEnabled": false,
+      "isDebugEnabled": false,
+      "overlayLocation": "topLeft"
+    },
+    "ledSettings": {
+      "isEnabled": true,
+      "welcomeLed": true,
+      "floodLed": true
+    },
+    "micVolume": 100,
+    "activePatrolSlot": null,
+    "videoMode": "default",
+    "hdrType": "auto",
+    "featureFlags": {
+      "supportFullHdSnapshot": false,
+      "hasHdr": true,
+      "smartDetectTypes": [
+        "person",
+        "vehicle",
+        "animal"
+      ],
+      "smartDetectAudioTypes": [
+        "alrmSmoke",
+        "alrmCmonx",
+        "alrmBabyCry",
+        "alrmSpeak"
+      ],
+      "videoModes": [
+        "default",
+        "sport",
+        "slowShutter"
+      ],
+      "hasMic": true,
+      "hasLedStatus": true,
+      "hasSpeaker": true
+    },
+    "smartDetectSettings": {
+      "objectTypes": [
+        "person",
+        "vehicle",
+        "animal"
+      ],
+      "audioTypes": [
+        "alrmSmoke",
+        "alrmCmonx",
+        "alrmBabyCry",
+        "alrmSpeak",
+        "smoke_cmonx"
+      ]
+    },
+    "hasPackageCamera": false
+  }
+]

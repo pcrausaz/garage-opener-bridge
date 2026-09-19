@@ -1,0 +1,774 @@
+[
+  {
+    "id": "6a60da9f0355d303e434dc44",
+    "modelKey": "camera",
+    "state": "CONNECTED",
+    "name": "Hallway (Tapo C236)",
+    "type": "tp-link Tapo C236",
+    "isMicEnabled": true,
+    "osdSettings": {
+      "isNameEnabled": false,
+      "isDateEnabled": false,
+      "isLogoEnabled": true,
+      "isDebugEnabled": false,
+      "overlayLocation": "topLeft"
+    },
+    "ledSettings": {
+      "isEnabled": true,
+      "welcomeLed": true,
+      "floodLed": true
+    },
+    "micVolume": 100,
+    "activePatrolSlot": null,
+    "videoMode": "default",
+    "hdrType": "off",
+    "featureFlags": {
+      "supportFullHdSnapshot": false,
+      "hasHdr": false,
+      "smartDetectTypes": [],
+      "smartDetectAudioTypes": [],
+      "videoModes": [],
+      "hasMic": true,
+      "hasLedStatus": false,
+      "hasSpeaker": false
+    },
+    "smartDetectSettings": {
+      "objectTypes": [],
+      "audioTypes": []
+    },
+    "hasPackageCamera": false
+  },
+  {
+    "id": "650b2b3c03738b03e4013954",
+    "modelKey": "camera",
+    "state": "CONNECTED",
+    "name": "Garage (G4 Instant)",
+    "type": "UVC G4 Instant",
+    "isMicEnabled": true,
+    "osdSettings": {
+      "isNameEnabled": true,
+      "isDateEnabled": true,
+      "isLogoEnabled": false,
+      "isDebugEnabled": false,
+      "overlayLocation": "topLeft"
+    },
+    "ledSettings": {
+      "isEnabled": true,
+      "welcomeLed": true,
+      "floodLed": true
+    },
+    "micVolume": 100,
+    "activePatrolSlot": null,
+    "videoMode": "default",
+    "hdrType": "auto",
+    "featureFlags": {
+      "supportFullHdSnapshot": false,
+      "hasHdr": true,
+      "smartDetectTypes": [
+        "person",
+        "vehicle",
+        "animal"
+      ],
+      "smartDetectAudioTypes": [
+        "alrmSmoke",
+        "alrmCmonx",
+        "alrmBabyCry",
+        "alrmSpeak"
+      ],
+      "videoModes": [
+        "default",
+        "sport",
+        "slowShutter"
+      ],
+      "hasMic": true,
+      "hasLedStatus": true,
+      "hasSpeaker": true
+    },
+    "smartDetectSettings": {
+      "objectTypes": [
+        "person",
+        "vehicle",
+        "animal"
+      ],
+      "audioTypes": [
+        "smoke_cmonx",
+        "alrmSmoke",
+        "alrmCmonx",
+        "alrmBabyCry"
+      ]
+    },
+    "hasPackageCamera": false
+  },
+  {
+    "id": "68669bf50261ce03e41b554a",
+    "modelKey": "camera",
+    "state": "CONNECTED",
+    "name": "Margo’s Bedroom (Tapo C110)",
+    "type": "tp-link Tapo C110",
+    "isMicEnabled": true,
+    "osdSettings": {
+      "isNameEnabled": false,
+      "isDateEnabled": false,
+      "isLogoEnabled": true,
+      "isDebugEnabled": false,
+      "overlayLocation": "topLeft"
+    },
+    "ledSettings": {
+      "isEnabled": true,
+      "welcomeLed": true,
+      "floodLed": true
+    },
+    "micVolume": 100,
+    "activePatrolSlot": null,
+    "videoMode": "default",
+    "hdrType": "off",
+    "featureFlags": {
+      "supportFullHdSnapshot": false,
+      "hasHdr": false,
+      "smartDetectTypes": [],
+      "smartDetectAudioTypes": [],
+      "videoModes": [],
+      "hasMic": true,
+      "hasLedStatus": false,
+      "hasSpeaker": false
+    },
+    "smartDetectSettings": {
+      "objectTypes": [],
+      "audioTypes": []
+    },
+    "hasPackageCamera": false
+  },
+  {
+    "id": "68e6983602623203e48758b9",
+    "modelKey": "camera",
+    "state": "CONNECTED",
+    "name": "Guest Bedroom (Tapo C113)",
+    "type": "tp-link Tapo C113",
+    "isMicEnabled": true,
+    "osdSettings": {
+      "isNameEnabled": false,
+      "isDateEnabled": false,
+      "isLogoEnabled": true,
+      "isDebugEnabled": false,
+      "overlayLocation": "topLeft"
+    },
+    "ledSettings": {
+      "isEnabled": true,
+      "welcomeLed": true,
+      "floodLed": true
+    },
+    "micVolume": 100,
+    "activePatrolSlot": null,
+    "videoMode": "default",
+    "hdrType": "off",
+    "featureFlags": {
+      "supportFullHdSnapshot": false,
+      "hasHdr": false,
+      "smartDetectTypes": [],
+      "smartDetectAudioTypes": [],
+      "videoModes": [],
+      "hasMic": true,
+      "hasLedStatus": false,
+      "hasSpeaker": false
+    },
+    "smartDetectSettings": {
+      "objectTypes": [],
+      "audioTypes": []
+    },
+    "hasPackageCamera": false
+  },
+  {
+    "id": "690bb13a02ce7a03e4dbda33",
+    "modelKey": "camera",
+    "state": "CONNECTED",
+    "name": "Fence Out (G4 Instant)",
+    "type": "UVC G4 Instant",
+    "isMicEnabled": true,
+    "osdSettings": {
+      "isNameEnabled": true,
+      "isDateEnabled": true,
+      "isLogoEnabled": true,
+      "isDebugEnabled": false,
+      "overlayLocation": "topLeft"
+    },
+    "ledSettings": {
+      "isEnabled": true,
+      "welcomeLed": true,
+      "floodLed": true
+    },
+    "micVolume": 100,
+    "activePatrolSlot": null,
+    "videoMode": "default",
+    "hdrType": "auto",
+    "featureFlags": {
+      "supportFullHdSnapshot": false,
+      "hasHdr": true,
+      "smartDetectTypes": [
+        "person",
+        "vehicle",
+        "animal"
+      ],
+      "smartDetectAudioTypes": [
+        "alrmSmoke",
+        "alrmCmonx",
+        "alrmBabyCry",
+        "alrmSpeak"
+      ],
+      "videoModes": [
+        "default",
+        "sport",
+        "slowShutter"
+      ],
+      "hasMic": true,
+      "hasLedStatus": true,
+      "hasSpeaker": true
+    },
+    "smartDetectSettings": {
+      "objectTypes": [
+        "person",
+        "vehicle",
+        "animal"
+      ],
+      "audioTypes": [
+        "alrmSmoke",
+        "alrmCmonx",
+        "alrmBabyCry"
+      ]
+    },
+    "hasPackageCamera": false
+  },
+  {
+    "id": "68e699ab00063203e4876e4f",
+    "modelKey": "camera",
+    "state": "CONNECTED",
+    "name": "Closet (Tapo C113)",
+    "type": "tp-link Tapo C113",
+    "isMicEnabled": true,
+    "osdSettings": {
+      "isNameEnabled": false,
+      "isDateEnabled": false,
+      "isLogoEnabled": true,
+      "isDebugEnabled": false,
+      "overlayLocation": "topLeft"
+    },
+    "ledSettings": {
+      "isEnabled": true,
+      "welcomeLed": true,
+      "floodLed": true
+    },
+    "micVolume": 100,
+    "activePatrolSlot": null,
+    "videoMode": "default",
+    "hdrType": "off",
+    "featureFlags": {
+      "supportFullHdSnapshot": false,
+      "hasHdr": false,
+      "smartDetectTypes": [],
+      "smartDetectAudioTypes": [],
+      "videoModes": [],
+      "hasMic": true,
+      "hasLedStatus": false,
+      "hasSpeaker": false
+    },
+    "smartDetectSettings": {
+      "objectTypes": [],
+      "audioTypes": []
+    },
+    "hasPackageCamera": false
+  },
+  {
+    "id": "65bfd0c303875903e4101114",
+    "modelKey": "camera",
+    "state": "CONNECTED",
+    "name": "Upstairs (G4 Instant) ",
+    "type": "UVC G4 Instant",
+    "isMicEnabled": true,
+    "osdSettings": {
+      "isNameEnabled": true,
+      "isDateEnabled": true,
+      "isLogoEnabled": false,
+      "isDebugEnabled": false,
+      "overlayLocation": "topLeft"
+    },
+    "ledSettings": {
+      "isEnabled": true,
+      "welcomeLed": true,
+      "floodLed": true
+    },
+    "micVolume": 100,
+    "activePatrolSlot": null,
+    "videoMode": "default",
+    "hdrType": "auto",
+    "featureFlags": {
+      "supportFullHdSnapshot": false,
+      "hasHdr": true,
+      "smartDetectTypes": [
+        "person",
+        "vehicle",
+        "animal"
+      ],
+      "smartDetectAudioTypes": [
+        "alrmSmoke",
+        "alrmCmonx",
+        "alrmBabyCry",
+        "alrmSpeak"
+      ],
+      "videoModes": [
+        "default",
+        "sport",
+        "slowShutter"
+      ],
+      "hasMic": true,
+      "hasLedStatus": true,
+      "hasSpeaker": true
+    },
+    "smartDetectSettings": {
+      "objectTypes": [
+        "person",
+        "vehicle",
+        "animal"
+      ],
+      "audioTypes": [
+        "smoke_cmonx",
+        "alrmSmoke",
+        "alrmCmonx",
+        "alrmBabyCry"
+      ]
+    },
+    "hasPackageCamera": false
+  },
+  {
+    "id": "64dd4c4303e52b03e4008041",
+    "modelKey": "camera",
+    "state": "CONNECTED",
+    "name": "Driveway (G5 Dome)",
+    "type": "UVC G5 Dome",
+    "isMicEnabled": true,
+    "osdSettings": {
+      "isNameEnabled": true,
+      "isDateEnabled": true,
+      "isLogoEnabled": false,
+      "isDebugEnabled": false,
+      "overlayLocation": "topLeft"
+    },
+    "ledSettings": {
+      "isEnabled": true,
+      "welcomeLed": true,
+      "floodLed": true
+    },
+    "micVolume": 100,
+    "activePatrolSlot": null,
+    "videoMode": "default",
+    "hdrType": "auto",
+    "featureFlags": {
+      "supportFullHdSnapshot": false,
+      "hasHdr": true,
+      "smartDetectTypes": [
+        "person",
+        "vehicle",
+        "animal"
+      ],
+      "smartDetectAudioTypes": [
+        "alrmSmoke",
+        "alrmCmonx",
+        "alrmBabyCry",
+        "alrmSpeak"
+      ],
+      "videoModes": [
+        "default",
+        "sport",
+        "slowShutter"
+      ],
+      "hasMic": true,
+      "hasLedStatus": true,
+      "hasSpeaker": true
+    },
+    "smartDetectSettings": {
+      "objectTypes": [
+        "person",
+        "vehicle",
+        "animal"
+      ],
+      "audioTypes": [
+        "alrmSmoke",
+        "alrmCmonx",
+        "alrmBabyCry",
+        "alrmSpeak",
+        "smoke_cmonx"
+      ]
+    },
+    "hasPackageCamera": false
+  },
+  {
+    "id": "640be9120285e003e4000f42",
+    "modelKey": "camera",
+    "state": "CONNECTED",
+    "name": "West Side (G5 Bullet)",
+    "type": "UVC G5 Bullet",
+    "isMicEnabled": true,
+    "osdSettings": {
+      "isNameEnabled": true,
+      "isDateEnabled": true,
+      "isLogoEnabled": false,
+      "isDebugEnabled": false,
+      "overlayLocation": "topLeft"
+    },
+    "ledSettings": {
+      "isEnabled": true,
+      "welcomeLed": true,
+      "floodLed": true
+    },
+    "micVolume": 100,
+    "activePatrolSlot": null,
+    "videoMode": "default",
+    "hdrType": "auto",
+    "featureFlags": {
+      "supportFullHdSnapshot": false,
+      "hasHdr": true,
+      "smartDetectTypes": [
+        "person",
+        "vehicle",
+        "animal"
+      ],
+      "smartDetectAudioTypes": [
+        "alrmSmoke",
+        "alrmCmonx",
+        "alrmBabyCry",
+        "alrmSpeak"
+      ],
+      "videoModes": [
+        "default",
+        "sport",
+        "slowShutter"
+      ],
+      "hasMic": true,
+      "hasLedStatus": false,
+      "hasSpeaker": false
+    },
+    "smartDetectSettings": {
+      "objectTypes": [
+        "animal",
+        "person",
+        "vehicle"
+      ],
+      "audioTypes": [
+        "smoke_cmonx",
+        "alrmSmoke",
+        "alrmCmonx",
+        "alrmBabyCry"
+      ]
+    },
+    "hasPackageCamera": false
+  },
+  {
+    "id": "659053fe02647f03e406f261",
+    "modelKey": "camera",
+    "state": "CONNECTED",
+    "name": "Living Room (G4 Instant)",
+    "type": "UVC G4 Instant",
+    "isMicEnabled": true,
+    "osdSettings": {
+      "isNameEnabled": true,
+      "isDateEnabled": true,
+      "isLogoEnabled": false,
+      "isDebugEnabled": false,
+      "overlayLocation": "topLeft"
+    },
+    "ledSettings": {
+      "isEnabled": true,
+      "welcomeLed": true,
+      "floodLed": true
+    },
+    "micVolume": 100,
+    "activePatrolSlot": null,
+    "videoMode": "default",
+    "hdrType": "auto",
+    "featureFlags": {
+      "supportFullHdSnapshot": false,
+      "hasHdr": true,
+      "smartDetectTypes": [
+        "person",
+        "vehicle",
+        "animal"
+      ],
+      "smartDetectAudioTypes": [
+        "alrmSmoke",
+        "alrmCmonx",
+        "alrmBabyCry",
+        "alrmSpeak"
+      ],
+      "videoModes": [
+        "default",
+        "sport",
+        "slowShutter"
+      ],
+      "hasMic": true,
+      "hasLedStatus": true,
+      "hasSpeaker": true
+    },
+    "smartDetectSettings": {
+      "objectTypes": [
+        "animal"
+      ],
+      "audioTypes": [
+        "smoke_cmonx",
+        "alrmSmoke",
+        "alrmCmonx",
+        "alrmBabyCry"
+      ]
+    },
+    "hasPackageCamera": false
+  },
+  {
+    "id": "65905ea1032b7f03e406f897",
+    "modelKey": "camera",
+    "state": "CONNECTED",
+    "name": "Backyard (G5 Pro)",
+    "type": "UVC G5 Pro",
+    "isMicEnabled": true,
+    "osdSettings": {
+      "isNameEnabled": true,
+      "isDateEnabled": true,
+      "isLogoEnabled": false,
+      "isDebugEnabled": false,
+      "overlayLocation": "topLeft"
+    },
+    "ledSettings": {
+      "isEnabled": true,
+      "welcomeLed": true,
+      "floodLed": true
+    },
+    "micVolume": 100,
+    "activePatrolSlot": null,
+    "videoMode": "default",
+    "hdrType": "auto",
+    "featureFlags": {
+      "supportFullHdSnapshot": false,
+      "hasHdr": true,
+      "smartDetectTypes": [
+        "person",
+        "vehicle",
+        "animal"
+      ],
+      "smartDetectAudioTypes": [
+        "alrmSmoke",
+        "alrmCmonx",
+        "alrmBabyCry",
+        "alrmSpeak"
+      ],
+      "videoModes": [
+        "default",
+        "sport",
+        "slowShutter"
+      ],
+      "hasMic": true,
+      "hasLedStatus": true,
+      "hasSpeaker": false
+    },
+    "smartDetectSettings": {
+      "objectTypes": [
+        "person",
+        "vehicle",
+        "animal"
+      ],
+      "audioTypes": [
+        "alrmSmoke",
+        "alrmCmonx",
+        "alrmBabyCry",
+        "alrmSpeak",
+        "smoke_cmonx"
+      ]
+    },
+    "hasPackageCamera": false
+  },
+  {
+    "id": "686a896a0254ce03e45eb176",
+    "modelKey": "camera",
+    "state": "DISCONNECTED",
+    "name": "Bedroom (Tapo C210)",
+    "type": "tp-link Tapo C210",
+    "isMicEnabled": true,
+    "osdSettings": {
+      "isNameEnabled": false,
+      "isDateEnabled": false,
+      "isLogoEnabled": true,
+      "isDebugEnabled": false,
+      "overlayLocation": "topLeft"
+    },
+    "ledSettings": {
+      "isEnabled": true,
+      "welcomeLed": true,
+      "floodLed": true
+    },
+    "micVolume": 100,
+    "activePatrolSlot": null,
+    "videoMode": "default",
+    "hdrType": "off",
+    "featureFlags": {
+      "supportFullHdSnapshot": false,
+      "hasHdr": false,
+      "smartDetectTypes": [],
+      "smartDetectAudioTypes": [],
+      "videoModes": [],
+      "hasMic": false,
+      "hasLedStatus": false,
+      "hasSpeaker": false
+    },
+    "smartDetectSettings": {
+      "objectTypes": [],
+      "audioTypes": []
+    },
+    "hasPackageCamera": false
+  },
+  {
+    "id": "68669b91003ece03e41b4ee3",
+    "modelKey": "camera",
+    "state": "CONNECTED",
+    "name": "Cat’s Cove (Tapo C210)",
+    "type": "tp-link Tapo C210",
+    "isMicEnabled": true,
+    "osdSettings": {
+      "isNameEnabled": false,
+      "isDateEnabled": false,
+      "isLogoEnabled": true,
+      "isDebugEnabled": false,
+      "overlayLocation": "topLeft"
+    },
+    "ledSettings": {
+      "isEnabled": true,
+      "welcomeLed": true,
+      "floodLed": true
+    },
+    "micVolume": 100,
+    "activePatrolSlot": null,
+    "videoMode": "default",
+    "hdrType": "off",
+    "featureFlags": {
+      "supportFullHdSnapshot": false,
+      "hasHdr": false,
+      "smartDetectTypes": [],
+      "smartDetectAudioTypes": [],
+      "videoModes": [],
+      "hasMic": true,
+      "hasLedStatus": false,
+      "hasSpeaker": false
+    },
+    "smartDetectSettings": {
+      "objectTypes": [],
+      "audioTypes": []
+    },
+    "hasPackageCamera": false
+  },
+  {
+    "id": "64deac42014d1103e400041b",
+    "modelKey": "camera",
+    "state": "CONNECTED",
+    "name": "Door Bell (G4 Pro)",
+    "type": "UVC G4 Doorbell Pro",
+    "isMicEnabled": true,
+    "osdSettings": {
+      "isNameEnabled": true,
+      "isDateEnabled": true,
+      "isLogoEnabled": false,
+      "isDebugEnabled": false,
+      "overlayLocation": "topLeft"
+    },
+    "ledSettings": {
+      "isEnabled": true,
+      "welcomeLed": true,
+      "floodLed": true
+    },
+    "lcdMessage": {
+      "type": "LEAVE_PACKAGE_AT_DOOR",
+      "resetAt": null,
+      "text": "LEAVE PACKAGE AT DOOR"
+    },
+    "micVolume": 100,
+    "activePatrolSlot": null,
+    "videoMode": "default",
+    "hdrType": "auto",
+    "featureFlags": {
+      "supportFullHdSnapshot": true,
+      "hasHdr": true,
+      "smartDetectTypes": [
+        "person",
+        "vehicle",
+        "animal",
+        "package"
+      ],
+      "smartDetectAudioTypes": [
+        "alrmSmoke",
+        "alrmCmonx",
+        "alrmBabyCry",
+        "alrmSpeak"
+      ],
+      "videoModes": [
+        "default",
+        "sport",
+        "slowShutter"
+      ],
+      "hasMic": true,
+      "hasLedStatus": true,
+      "hasSpeaker": true
+    },
+    "smartDetectSettings": {
+      "objectTypes": [
+        "person",
+        "vehicle",
+        "package",
+        "animal"
+      ],
+      "audioTypes": [
+        "alrmSmoke",
+        "alrmCmonx",
+        "alrmBabyCry",
+        "alrmSpeak",
+        "smoke_cmonx"
+      ]
+    },
+    "hasPackageCamera": true
+  },
+  {
+    "id": "660f1ba2001ecd03e4013e65",
+    "modelKey": "camera",
+    "state": "CONNECTED",
+    "name": "Fence Side (G3 instant)",
+    "type": "UVC G3 Instant",
+    "isMicEnabled": true,
+    "osdSettings": {
+      "isNameEnabled": true,
+      "isDateEnabled": true,
+      "isLogoEnabled": false,
+      "isDebugEnabled": false,
+      "overlayLocation": "topLeft"
+    },
+    "ledSettings": {
+      "isEnabled": true,
+      "welcomeLed": true,
+      "floodLed": true
+    },
+    "micVolume": 100,
+    "activePatrolSlot": null,
+    "videoMode": "default",
+    "hdrType": "on",
+    "featureFlags": {
+      "supportFullHdSnapshot": false,
+      "hasHdr": true,
+      "smartDetectTypes": [],
+      "smartDetectAudioTypes": [],
+      "videoModes": [
+        "default",
+        "sport",
+        "slowShutter"
+      ],
+      "hasMic": true,
+      "hasLedStatus": true,
+      "hasSpeaker": true
+    },
+    "smartDetectSettings": {
+      "objectTypes": [],
+      "audioTypes": []
+    },
+    "hasPackageCamera": false
+  }
+]
