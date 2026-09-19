@@ -1,0 +1,12 @@
+{
+  "_note": "SYNTHETIC — shaped after community captures of Protect Alarm Manager webhooks; replace with a real capture.",
+  "alarm": {
+    "name": "Garage door opened",
+    "sources": [{ "device": "F4E2C6AABBCC", "type": "include" }],
+    "conditions": [{ "condition": { "type": "is", "source": "sensor_opened" } }],
+    "triggers": [{ "key": "sensor_opened", "device": "F4E2C6AABBCC" }],
+    "eventPath": "/protect/events/event/68cd0000000000000000abcd",
+    "eventLocalLink": "https://192.168.50.1/protect/events/event/68cd0000000000000000abcd"
+  },
+  "timestamp": 1758300000000
+}

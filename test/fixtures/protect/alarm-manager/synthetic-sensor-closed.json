@@ -1,0 +1,5 @@
+{
+  "_note": "SYNTHETIC",
+  "alarm": { "name": "Garage door closed", "triggers": [{ "key": "sensor_closed", "device": "F4E2C6AABBCC" }] },
+  "timestamp": 1758300100000
+}

@@ -1,0 +1,5 @@
+{
+  "_note": "SYNTHETIC — 'detection ended' variant; key naming is a guess until captured",
+  "alarm": { "name": "Garage vehicle ended", "eventType": "smart_detect_end", "triggers": [{ "key": "vehicle", "device": "650b2b3c03738b03e4013954" }] },
+  "timestamp": 1758300300000
+}

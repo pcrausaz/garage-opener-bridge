@@ -1,0 +1,5 @@
+{
+  "_note": "SYNTHETIC — license plate detection on the driveway camera",
+  "alarm": { "name": "Driveway plate", "triggers": [{ "key": "license_plate_known", "device": "64dd4c4303e52b03e4008041", "value": "ABC 123" }] },
+  "timestamp": 1758300400000
+}
