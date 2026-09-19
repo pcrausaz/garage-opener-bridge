@@ -38,6 +38,9 @@ export class Instance {
   private protectOk = false;
   private protectVersion: string | undefined;
   private protectError: string | undefined;
+  /** True once start() completed; API routes answer 503 before that. */
+  ready = false;
+  startError: string | undefined;
   private protectLastOk: number | undefined;
   private readonly log: Logger;
 
@@ -101,6 +104,7 @@ export class Instance {
     }
     this.store.set("mapping", mapping);
     if (this.discovery?.autoPaired) this.store.set("autoPaired", true);
+    if (this.ready) return;
     this.door = new LiveDoorService({ protect: this.protect, store: this.store, bus: this.bus, logger: this.log, config: c, mapping, buildState: () => this.state() });
     this.bus.on("state", (s) => {
       this.protectOk = s.connectionOk;
@@ -120,11 +124,13 @@ export class Instance {
       this.lpr.start();
     }
     this.bus.on("protect-event", (e) => void this.onProtectEvent(e));
+    this.ready = true;
+    this.startError = undefined;
     this.log.info({ mapping, mode: this.mode, lpr: !!this.lpr }, "instance started");
   }
 
   async stop(): Promise<void> {
-    await this.door?.stop();
+    await (this.door as DoorService | undefined)?.stop();
     this.alerts?.stop();
     this.lpr?.stop();
     this.hold.stop();
@@ -181,7 +187,8 @@ export class Instance {
   }
 
   health(): Health {
-    const h: Health = { ok: true, mode: this.mode, version: VERSION, protect: { ok: this.protectOk } };
+    const h: Health = { ok: this.ready, ready: this.ready, mode: this.mode, version: VERSION, protect: { ok: this.protectOk } };
+    if (!this.ready && this.startError) h.lastError = this.startError;
     if (this.protectVersion) h.protect.applicationVersion = this.protectVersion;
     if (this.protectLastOk) h.protect.lastSuccessAt = iso(this.protectLastOk);
     if (!this.protectOk && this.protectError) h.protect.error = this.protectError;
@@ -226,5 +233,37 @@ export class Instance {
         throw new RangeError(`unknown mock action ${action}`);
     }
     return this.state();
+  }
+}
+
+export interface RetryOptions {
+  baseMs?: number;
+  maxMs?: number;
+  sleep?: (ms: number) => Promise<void>;
+  /** Stop retrying when this returns true (used on shutdown). */
+  stopped?: () => boolean;
+}
+
+/**
+ * Start an instance with exponential backoff (2 s → 60 s cap) until it succeeds. Failures are logged at
+ * warn and exposed through `instance.startError` / `/healthz`. Never throws.
+ */
+export async function startWithRetry(instance: Instance, logger: Logger, o: RetryOptions = {}): Promise<void> {
+  const base = o.baseMs ?? 2000;
+  const max = o.maxMs ?? 60_000;
+  const sleep = o.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  let delay = base;
+  for (let attempt = 1; ; attempt++) {
+    if (o.stopped?.()) return;
+    try {
+      await instance.start();
+      return;
+    } catch (err) {
+      const message = (err as Error).message;
+      instance.startError = message;
+      logger.warn({ attempt, retryInMs: delay, error: message }, "bridge startup failed; retrying");
+      await sleep(delay);
+      delay = Math.min(delay * 2, max);
+    }
   }
 }

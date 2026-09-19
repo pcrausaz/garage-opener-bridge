@@ -52,6 +52,10 @@ function err(reply: FastifyReply, status: number, error: string, message: string
   return reply.code(status).send(body);
 }
 
+function notReady(reply: FastifyReply, inst: Instance) {
+  return err(reply, 503, "protect_unavailable", inst.startError ? `bridge not ready: ${inst.startError}` : "bridge starting");
+}
+
 export type BridgeServer = Awaited<ReturnType<typeof buildServer>>;
 
 export async function buildServer(o: ServerOptions) {
@@ -101,7 +105,10 @@ export async function buildServer(o: ServerOptions) {
     if (!token || !accepts(token)) return err(reply, 401, "unauthorized", "missing or invalid bearer token");
     req.token = token;
     if (o.registry) req.inst = await o.registry.get(token);
-    else req.inst = o.instance!;
+    else {
+      if (!o.instance!.ready && !req.url.startsWith("/v1/audit")) return notReady(reply, o.instance!);
+      req.inst = o.instance!;
+    }
   });
 
   if (validateResponses) {
@@ -123,7 +130,7 @@ export async function buildServer(o: ServerOptions) {
 
   app.get("/healthz", { config: { operationId: "getHealth", rateLimit: false } }, async () => {
     if (o.instance) return o.instance.health();
-    return { ok: true, mode, version: (await import("../version.js")).VERSION, protect: { ok: true, applicationVersion: "mock" } };
+    return { ok: true, ready: true, mode, version: (await import("../version.js")).VERSION, protect: { ok: true, applicationVersion: "mock" } };
   });
 
   app.get("/v1/state", { config: { operationId: "getState" } }, async (req) => req.inst!.state());
@@ -188,6 +195,7 @@ export async function buildServer(o: ServerOptions) {
     if (!secret || !safeEq(secret, req.params.secret)) return reply.code(404).send();
     const inst = o.instance ?? (o.registry ? await o.registry.get(config.bridge.tokens[0] ?? `${config.bridge.mockTokenPrefix}webhook`) : undefined);
     if (!inst) return reply.code(404).send();
+    if (!inst.ready) return notReady(reply, inst);
     const body = req.method === "POST" ? req.body : undefined;
     const events = classifyAlarmPayload(body, req.query as Record<string, unknown>);
     app.log.debug({ payload: stripThumbnails(body), query: req.query, events }, "alarm manager webhook");

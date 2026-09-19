@@ -325,7 +325,9 @@ components:
       type: object
       required: [ok, mode, version, protect]
       properties:
-        ok: { type: boolean }
+        ok: { type: boolean, description: "false until the instance is ready (live mode startup may retry in the background)" }
+        ready: { type: boolean, description: "Instance started (console discovered or mapping configured)" }
+        lastError: { type: string, description: "Last startup failure message while not ready" }
         mode: { type: string, enum: [live, mock] }
         version: { type: string }
         protect:
