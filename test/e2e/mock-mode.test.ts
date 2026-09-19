@@ -113,6 +113,26 @@ describe("mock-mode e2e", () => {
     expect(((await (await call("/v1/state", {}, "demo-lpr")).json()) as { door: string }).door).toBe("OPEN");
   });
 
+  it("undo: plate-seen → auto-open → undo → CLOSED; consumed/expired undo → 404", async () => {
+    await call("/v1/mock/reset", { method: "POST" }, "demo-undo");
+    await call("/v1/mock/plate-seen", { method: "POST", body: JSON.stringify({ plate: "ABC123" }) }, "demo-undo");
+    const inst = await registry.get("demo-undo");
+    const alert = inst.store.listAudit(5).find((e) => e.kind === "alert");
+    expect(alert).toBeDefined();
+    const id = inst.lpr!.pendingUndo()[0]!.id;
+    const alertEvent = received.map((e) => JSON.parse(e.body)).find((e) => e.type === "alert" && e.data.autoActionId === id);
+    expect(alertEvent).toBeDefined();
+    await new Promise((r) => setTimeout(r, 2300));
+    const r = await call(`/v1/auto-actions/${id}/undo`, { method: "POST" }, "demo-undo");
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ ok: true, command: "close", to: "CLOSED" });
+    expect(((await (await call("/v1/state", {}, "demo-undo")).json()) as { door: string }).door).toBe("CLOSED");
+    // a consumed action is gone; true time-based expiry (61 s) is covered with fake timers in test/unit/lpr.test.ts
+    const expired = await call(`/v1/auto-actions/${id}/undo`, { method: "POST" }, "demo-undo");
+    expect(expired.status).toBe(404);
+    expect(await expired.json()).toMatchObject({ error: "undo_expired" });
+  });
+
   it("idle mock instances expire", async () => {
     await call("/v1/state", {}, "demo-expire");
     const before = registry.size();

@@ -24,9 +24,21 @@ describe("LPR rule engine", () => {
     expect(pending).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(12_100);
     expect(inst.door.snapshot().door).toBe("OPEN");
-    expect(await inst.lpr!.undo(pending[0]!.id)).toBe(true);
-    expect(inst.door.snapshot().door).toBe("CLOSING");
-    expect(await inst.lpr!.undo(pending[0]!.id)).toBe(false);
+    expect(m.capture.alerts[0]?.autoActionId).toBe(pending[0]!.id);
+    const undo = inst.lpr!.undo(pending[0]!.id);
+    await vi.advanceTimersByTimeAsync(12_100);
+    expect(await undo).toMatchObject({ ok: true, command: "close", to: "CLOSED" });
+    expect(await inst.lpr!.undo(pending[0]!.id)).toBeNull();
+    expect(inst.store.listAudit(20).some((e) => e.kind === "auto-action" && e.outcome === "undone")).toBe(true);
+  });
+
+  it("undo expires after undoSeconds", async () => {
+    const m = await mockInstance();
+    inst = m.inst;
+    await inst.mockAction("plate-seen", { plate: "ABC123" });
+    const id = inst.lpr!.pendingUndo()[0]!.id;
+    await vi.advanceTimersByTimeAsync(61_000);
+    expect(await inst.lpr!.undo(id)).toBeNull();
   });
 
   it("acts on edges only: a plate that stays visible never re-triggers", async () => {

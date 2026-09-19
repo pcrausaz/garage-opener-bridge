@@ -148,6 +148,14 @@ export async function buildServer(o: ServerOptions) {
   doorRoute("close");
   doorRoute("toggle");
 
+  app.post<{ Params: { id: string } }>("/v1/auto-actions/:id/undo", { config: { operationId: "undoAutoAction", rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (req, reply) => {
+    const lpr = req.inst!.lpr;
+    const result = lpr ? await lpr.undo(req.params.id) : null;
+    if (!result) return err(reply, 404, "undo_expired", "unknown auto-action or undo window elapsed");
+    if (validateResponses) validator.assert("CommandResult", result);
+    return result;
+  });
+
   app.post<{ Body: { minutes?: unknown } }>("/v1/hold", { config: { operationId: "setHold" } }, async (req, reply) => {
     const r = validator.validate("HoldRequest", req.body);
     if (!r.ok) return err(reply, 400, "validation", r.errors);

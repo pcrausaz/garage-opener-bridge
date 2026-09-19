@@ -6,7 +6,7 @@ import type { HoldService } from "../hold.js";
 import type { Notifier } from "../notify/notifier.js";
 import type { Store } from "../store/db.js";
 import type { VehicleTracker } from "../alerts/vehicle.js";
-import { iso, type AutoAction, type DoorCommand } from "../types.js";
+import { iso, type AutoAction, type CommandResult, type DoorCommand } from "../types.js";
 import { normalizePlate } from "../webhooks/classify.js";
 
 export interface LprOptions {
@@ -120,7 +120,7 @@ export class LprEngine {
     this.undoable.set(action.id, action);
     setTimeout(() => this.undoable.delete(action.id), this.o.undoSeconds * 1000).unref?.();
     this.d.bus.emit("auto-action", action);
-    await this.d.notifier.alert(rule, command === "open" ? "Opening the garage" : "Closing the garage", body, ["undo"], { undoUntil: action.undoUntil });
+    await this.d.notifier.alert(rule, command === "open" ? "Opening the garage" : "Closing the garage", body, ["undo"], { undoUntil: action.undoUntil, autoActionId: action.id });
     try {
       const fn = command === "open" ? this.d.door.open.bind(this.d.door) : this.d.door.close.bind(this.d.door);
       await fn({ source: rule, wait: false });
@@ -130,19 +130,18 @@ export class LprEngine {
     }
   }
 
-  /** Reverse an auto-action if still inside its undo window. */
-  async undo(id: string): Promise<boolean> {
+  /** Reverse an auto-action if still inside its undo window; `null` when unknown or expired. Door errors propagate. */
+  async undo(id: string, wait = true): Promise<CommandResult | null> {
     const a = this.undoable.get(id);
-    if (!a || Date.parse(a.undoUntil) < this.now()) return false;
+    if (!a || Date.parse(a.undoUntil) < this.now()) return null;
+    const reverse = a.command === "open" ? "close" : "open";
+    const result = await (reverse === "open" ? this.d.door.open({ source: "undo", wait }) : this.d.door.close({ source: "undo", wait }));
     this.undoable.delete(id);
     this.d.store.auditUpdate(a.auditId, { outcome: "undone" });
-    const reverse = a.command === "open" ? "close" : "open";
-    try {
-      await (reverse === "open" ? this.d.door.open({ source: "undo", wait: false }) : this.d.door.close({ source: "undo", wait: false }));
-    } catch (err) {
-      this.log.warn({ err }, "undo failed");
+    if ("accepted" in result) {
+      return { ok: true, command: reverse, from: this.d.door.snapshot().door, to: this.d.door.snapshot().door, pulsed: true, verified: false, auditId: result.auditId, startedAt: iso(this.now()), finishedAt: iso(this.now()) };
     }
-    return true;
+    return result;
   }
 
   pendingUndo(): AutoAction[] {

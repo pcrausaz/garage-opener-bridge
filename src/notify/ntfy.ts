@@ -21,8 +21,8 @@ export function ntfyActions(alert: Alert, publicUrl: string | undefined, token: 
     if (a === "close-now") actions.push({ action: "http", label: "Close now", method: "POST", url: `${publicUrl}/v1/door/close?source=ntfy`, headers, clear: true });
     if (a === "hold-2h") actions.push({ action: "http", label: "Hold 2h", method: "POST", url: `${publicUrl}/v1/hold`, headers, body: JSON.stringify({ minutes: 120 }), clear: true });
     if (a === "undo") {
-      const reverse = alert.rule === "lpr-auto-open" ? "close" : "open";
-      actions.push({ action: "http", label: "Undo", method: "POST", url: `${publicUrl}/v1/door/${reverse}?source=undo`, headers, clear: true });
+      const url = alert.autoActionId ? `${publicUrl}/v1/auto-actions/${encodeURIComponent(alert.autoActionId)}/undo` : `${publicUrl}/v1/door/${alert.rule === "lpr-auto-open" ? "close" : "open"}?source=undo`;
+      actions.push({ action: "http", label: "Undo", method: "POST", url, headers, clear: true });
     }
   }
   return actions.slice(0, 3); // ntfy allows at most 3 actions

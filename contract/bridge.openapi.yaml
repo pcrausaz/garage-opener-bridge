@@ -94,6 +94,30 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "409": { $ref: "#/components/responses/Conflict" }
         "503": { $ref: "#/components/responses/ProtectUnavailable" }
+  /v1/auto-actions/{id}/undo:
+    post:
+      tags: [door]
+      operationId: undoAutoAction
+      summary: Reverse an automatic action (LPR auto-open/close) within its undo window
+      description: |
+        Auto-actions carry an `autoActionId` in their `Alert` and `auto-action` events. Undo issues the reverse
+        command (`close` after an auto-open, `open` after an auto-close) and waits for verification. After the
+        undo window (60 s by default) the action is no longer undoable and the route answers 404 `undo_expired`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { $ref: "#/components/responses/CommandResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "Unknown auto-action or undo window elapsed (error undo_expired)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ProtectUnavailable" }
   /v1/hold:
     post:
       tags: [hold]
@@ -412,6 +436,7 @@ components:
           type: array
           items: { type: string, enum: [close-now, hold-2h, ignore, undo] }
         undoUntil: { type: string, format: date-time }
+        autoActionId: { type: string, description: "Id for `POST /v1/auto-actions/{id}/undo`" }
     SseEvent:
       type: object
       description: One SSE frame; `event` is the frame name and `data` its JSON payload.

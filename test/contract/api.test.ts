@@ -114,6 +114,28 @@ describe("bridge HTTP API matches packages/contract/bridge.openapi.yaml", () => 
     expect((await app.inject({ method: "POST", url: "/v1/mock/explode", headers: auth })).statusCode).toBe(400);
   });
 
+  it("POST /v1/auto-actions/{id}/undo → CommandResult / 404 undo_expired", async () => {
+    const t = { authorization: "Bearer demo-undo" };
+    await app.inject({ method: "POST", url: "/v1/mock/reset", headers: t });
+    const seen = await app.inject({ method: "POST", url: "/v1/mock/plate-seen", headers: t, payload: { plate: "ABC123" } });
+    expect(seen.json().door).toBe("OPENING");
+    const inst = await registry.get("demo-undo");
+    const id = inst.lpr!.pendingUndo()[0]!.id;
+    const busy = await app.inject({ method: "POST", url: `/v1/auto-actions/${id}/undo`, headers: t });
+    expect(busy.statusCode).toBe(409);
+    expect(v.validate("Error", busy.json())).toEqual({ ok: true });
+    await new Promise((r) => setTimeout(r, 2300));
+    const undo = await app.inject({ method: "POST", url: `/v1/auto-actions/${id}/undo`, headers: t });
+    expect(undo.statusCode).toBe(200);
+    expect(v.validate("CommandResult", undo.json())).toEqual({ ok: true });
+    expect(undo.json()).toMatchObject({ ok: true, command: "close", to: "CLOSED" });
+    const gone = await app.inject({ method: "POST", url: `/v1/auto-actions/${id}/undo`, headers: t });
+    expect(gone.statusCode).toBe(404);
+    expect(gone.json()).toMatchObject({ error: "undo_expired" });
+    expect(v.validate("Error", gone.json())).toEqual({ ok: true });
+    expect((await app.inject({ method: "POST", url: "/v1/auto-actions/nope/undo" })).statusCode).toBe(401);
+  });
+
   it("webhook: 204 with the right secret (POST and GET), 404 otherwise", async () => {
     const ok = await app.inject({ method: "POST", url: "/v1/webhooks/alarm-manager/0123456789abcdef", payload: { alarm: { triggers: [{ key: "sensor_opened" }] } } });
     expect(ok.statusCode).toBe(204);
