@@ -5,6 +5,7 @@ import type { Store } from "../store/db.js";
 import type { Bus } from "../events/bus.js";
 import type { DoorMapping } from "../discovery.js";
 import { canCommand, initialDoorState, reduce, type DoorMachineState } from "./state.js";
+import { StuckOutputDetector } from "./stuck.js";
 import { iso, type CommandAccepted, type CommandResult, type DoorCommand, type DoorState, type State } from "../types.js";
 
 export class DoorBusyError extends Error {
@@ -21,7 +22,7 @@ export interface DoorSnapshot {
   lastChangedAt?: string;
   connectionOk: boolean;
   sensor: { id: string; name: string; connected: boolean; isOpened: boolean; openStatusChangedAt?: string; battery: { percentage: number | null; isLow: boolean }; signalQuality: number | null };
-  relay: { id: string; outputId: number; name: string; connected: boolean; pulseMode: "native" | "emulated"; pulseDurationMs: number | null };
+  relay: { id: string; outputId: number; name: string; connected: boolean; pulseMode: "native" | "emulated"; pulseDurationMs: number | null; outputStuck: boolean };
   updatedAt: string;
 }
 
@@ -62,6 +63,7 @@ export class LiveDoorService implements DoorService {
   private state: DoorMachineState;
   private sensor: ProtectSensor | null = null;
   private relay: ProtectRelay | null = null;
+  private readonly stuck = new StuckOutputDetector();
   private connectionOk = false;
   private failures = 0;
   private pollTimer: NodeJS.Timeout | null = null;
@@ -108,6 +110,7 @@ export class LiveDoorService implements DoorService {
         connected: r?.state === "CONNECTED",
         pulseMode: this.d.config.relay.pulseMode,
         pulseDurationMs: out?.pulseDuration ?? null,
+        outputStuck: this.stuck.isStuck(),
       },
       updatedAt: iso(this.now()),
     };
@@ -151,9 +154,21 @@ export class LiveDoorService implements DoorService {
     }
   }
 
+  /** Re-reads the relay record (connected, pulseDuration, output state) and runs the stuck-output detector. */
   private async refreshRelay(): Promise<void> {
     try {
+      const prev = this.relay;
       this.relay = await this.d.protect.getRelay(this.mapping.relayId);
+      const out = this.relay.outputs.find((o) => o.id === this.mapping.outputId);
+      const obs = this.stuck.observe(out?.state, out?.pulseDuration, this.now());
+      if (obs.changed) {
+        if (obs.stuck) this.log.warn({ relayId: this.mapping.relayId, outputId: this.mapping.outputId, onForMs: obs.onForMs }, "relay output stuck on; commands refused until it releases");
+        else this.log.info({ relayId: this.mapping.relayId, outputId: this.mapping.outputId }, "relay output released");
+        this.emitState();
+      } else if (prev) {
+        const pout = prev.outputs.find((o) => o.id === this.mapping.outputId);
+        if (pout?.pulseDuration !== out?.pulseDuration || prev.state !== this.relay.state) this.emitState();
+      }
     } catch (err) {
       this.log.warn({ err }, "relay read failed");
     }
@@ -181,10 +196,12 @@ export class LiveDoorService implements DoorService {
     if (this.pollTimer) clearTimeout(this.pollTimer);
     const ms = this.state.moving ? this.d.config.poll.movingMs : this.d.config.poll.idleMs;
     this.pollTimer = setTimeout(() => {
-      this.polling = this.refresh().finally(() => {
-        this.polling = null;
-        this.schedulePoll();
-      });
+      this.polling = Promise.all([this.refresh(), this.refreshRelay()])
+        .then(() => undefined)
+        .finally(() => {
+          this.polling = null;
+          this.schedulePoll();
+        });
     }, ms);
     this.pollTimer.unref?.();
   }
@@ -229,6 +246,12 @@ export class LiveDoorService implements DoorService {
       this.d.bus.emit("command", result);
       return result;
     }
+    if (this.stuck.isStuck()) {
+      const auditId = this.d.store.audit({ kind: "command", source: opts.source, command, from, to: from, outcome: "failed", detail: "relay_output_stuck" });
+      const result: CommandResult = { ok: false, command, from, to: from, pulsed: false, verified: false, auditId, startedAt: iso(startedAt), finishedAt: iso(this.now()), error: "relay_output_stuck" };
+      this.d.bus.emit("command", result);
+      return result;
+    }
     const auditId = this.d.store.audit({ kind: "command", source: opts.source, command, from, outcome: "ok", detail: "pulsing" });
     const travelMs = (this.d.config.door.travelSeconds + this.d.config.door.verifyAfterSeconds) * 1000;
     this.busy = true;
@@ -247,7 +270,7 @@ export class LiveDoorService implements DoorService {
         this.deadlineTimer = null;
         this.busy = false;
         if (!this.running) return;
-        await this.refresh();
+        await Promise.all([this.refresh(), this.refreshRelay()]);
         if (!this.running) return;
         const at = this.now();
         this.setState(reduce(this.state, { type: "deadline", at }));

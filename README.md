@@ -53,8 +53,8 @@ Spec: `packages/contract/bridge.openapi.yaml` (the server validates bodies with 
 | Route | Purpose |
 |---|---|
 | `GET /healthz` | liveness; `ready:false` + `lastError` (and `ok:false`) while live-mode startup is still retrying (2 s → 60 s backoff); API routes answer 503 `protect_unavailable` until ready |
-| `GET /v1/state` | door state machine (`CLOSED OPENING OPEN CLOSING UNKNOWN STUCK`), hold, sensor, relay, vehicle |
-| `POST /v1/door/open|close|toggle?wait=true&source=app` | idempotent, single-flight (409 while moving), verified (`ok:false` + `STUCK` if the sensor never confirms); `wait=false` → 202 |
+| `GET /v1/state` | door state machine (`CLOSED OPENING OPEN CLOSING UNKNOWN STUCK`), hold, sensor, relay (record refreshed from the console on every poll; `outputStuck` when the pulse output stays on > max(2 × pulseDuration, 3 s)), vehicle |
+| `POST /v1/door/open|close|toggle?wait=true&source=app` | idempotent, single-flight (409 while moving), verified (`ok:false` + `STUCK` if the sensor never confirms); `ok:false` + `error: relay_output_stuck` with no activation while the relay output is stuck on; `wait=false` → 202 |
 | `POST /v1/auto-actions/{id}/undo` | reverse an LPR auto-action within its 60 s window (`autoActionId` from the alert); 404 `undo_expired` afterwards |
 | `POST /v1/hold {minutes}` / `DELETE /v1/hold` | hold-open suppresses every alert rule |
 | `GET /v1/events` | SSE: `state`, `command`, `alert`, `hold`, `vehicle`, `heartbeat` (token via header or `?token=`) |

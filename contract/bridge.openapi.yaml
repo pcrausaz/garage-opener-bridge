@@ -328,6 +328,10 @@ components:
         ok: { type: boolean, description: "false until the instance is ready (live mode startup may retry in the background)" }
         ready: { type: boolean, description: "Instance started (console discovered or mapping configured)" }
         lastError: { type: string, description: "Last startup failure message while not ready" }
+        warnings:
+          type: array
+          description: "Operational warnings, e.g. relay_output_stuck"
+          items: { type: string }
         mode: { type: string, enum: [live, mock] }
         version: { type: string }
         protect:
@@ -364,7 +368,8 @@ components:
         name: { type: string }
         connected: { type: boolean }
         pulseMode: { type: string, enum: [native, emulated] }
-        pulseDurationMs: { type: [integer, "null"] }
+        pulseDurationMs: { type: [integer, "null"], description: "Refreshed from the console on every poll and after each command" }
+        outputStuck: { type: boolean, description: "Pulse output has reported state on for longer than max(2 x pulseDuration, 3 s); commands are refused with error relay_output_stuck" }
     Hold:
       type: object
       required: [active]
@@ -416,7 +421,7 @@ components:
         auditId: { type: integer }
         startedAt: { type: string, format: date-time }
         finishedAt: { type: string, format: date-time }
-        error: { type: string }
+        error: { type: string, description: "verification_failed | relay_output_stuck" }
     CommandAccepted:
       type: object
       required: [accepted, command, auditId, expectedBy]

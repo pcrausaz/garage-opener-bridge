@@ -67,6 +67,12 @@ export async function startMockProtect(opts: MockProtectOptions = {}) {
     setOpened(v: boolean) {
       state.sensor = { ...state.sensor, isOpened: v, openStatusChangedAt: Date.now() };
     },
+    /** Mutate the mapped relay/output record as the console would report it. */
+    setRelayOutput(patch: Partial<{ state: string; pulseDuration: number | null }>, relayPatch: Partial<{ state: string }> = {}) {
+      const relay = relays[0]!;
+      Object.assign(relay, relayPatch);
+      Object.assign(relay.outputs[0]!, patch);
+    },
     async close() {
       for (const t of state.timers) clearTimeout(t);
       await app.close();

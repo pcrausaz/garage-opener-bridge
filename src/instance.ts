@@ -192,6 +192,9 @@ export class Instance {
     if (this.protectVersion) h.protect.applicationVersion = this.protectVersion;
     if (this.protectLastOk) h.protect.lastSuccessAt = iso(this.protectLastOk);
     if (!this.protectOk && this.protectError) h.protect.error = this.protectError;
+    const warnings: string[] = [];
+    if (this.ready && this.door.snapshot().relay.outputStuck) warnings.push("relay_output_stuck");
+    if (warnings.length) h.warnings = warnings;
     return h;
   }
 
