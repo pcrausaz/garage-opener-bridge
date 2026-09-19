@@ -62,7 +62,7 @@ describe("relay record refresh and stuck-output handling (fixture mock Protect)"
     expect(v.validate("CommandResult", refused)).toEqual({ ok: true });
     expect(protect.state.activations).toHaveLength(0);
     expect(inst.state().door).toBe("CLOSED"); // sensor stays the only truth
-    expect(inst.store.listAudit(1)[0]).toMatchObject({ kind: "command", command: "open", outcome: "failed", detail: "relay_output_stuck" });
+    expect(inst.store.listAudit(1)[0]).toMatchObject({ kind: "command", command: "open", outcome: "failed", detail: expect.stringContaining("relay_output_stuck") });
 
     await new Promise((r) => setTimeout(r, 1000));
     expect(warnLines.filter((l) => l.includes("relay output stuck")).length).toBe(1); // once per episode

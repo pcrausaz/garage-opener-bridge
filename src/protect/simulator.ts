@@ -15,6 +15,8 @@ export interface SimulatorOptions {
   tiltMs?: number;
   batteryPercentage?: number;
   now?: () => number;
+  /** `pulse` (default): each activate is a press. `toggle`: activate flips the output; press on off→on (ADR-0010). */
+  relayBehaviour?: "pulse" | "toggle";
 }
 
 export type SimPhase = "closed" | "opening" | "open" | "closing" | "stopped";
@@ -32,6 +34,8 @@ export class ProtectSimulator extends EventEmitter implements ProtectClient {
   battery: number;
   reverseNextClose = false;
   activations = 0;
+  outputState: "on" | "off" = "off";
+  readonly relayBehaviour: "pulse" | "toggle";
   private timer: NodeJS.Timeout | null = null;
   private readonly travelMs: number;
   private readonly tiltMs: number;
@@ -43,6 +47,7 @@ export class ProtectSimulator extends EventEmitter implements ProtectClient {
     this.tiltMs = opts.tiltMs ?? Math.min(1000, this.travelMs / 5);
     this.battery = opts.batteryPercentage ?? 76;
     this.now = opts.now ?? Date.now;
+    this.relayBehaviour = opts.relayBehaviour ?? "pulse";
     this.openStatusChangedAt = this.now();
   }
 
@@ -52,6 +57,7 @@ export class ProtectSimulator extends EventEmitter implements ProtectClient {
     this.setOpened(false);
     this.reverseNextClose = false;
     this.activations = 0;
+    this.outputState = "off";
   }
 
   private clearTimer() {
@@ -134,7 +140,7 @@ export class ProtectSimulator extends EventEmitter implements ProtectClient {
       type: "USL-Relay-US",
       state: "CONNECTED",
       outputs: [
-        { id: 0, name: "Garage Door", type: "garageDoor", delay: null, pulseDuration: 100, state: "off", rebootState: "restore" },
+        { id: 0, name: "Garage Door", type: "garageDoor", delay: null, pulseDuration: 100, state: this.outputState, rebootState: "restore" },
         { id: 1, name: null, type: null, delay: null, pulseDuration: null, state: "off", rebootState: "off" },
       ],
     };
@@ -165,7 +171,13 @@ export class ProtectSimulator extends EventEmitter implements ProtectClient {
   }
   async activateOutput(relayId: string, outputId: number): Promise<unknown> {
     if (relayId !== SIM_IDS.relayId || outputId !== SIM_IDS.outputId) throw new Error("not found");
-    this.pulse();
+    if (this.relayBehaviour === "toggle") {
+      const press = this.outputState === "off";
+      this.outputState = press ? "on" : "off";
+      if (press) this.pulse();
+    } else {
+      this.pulse();
+    }
     return {};
   }
   async close(): Promise<void> {

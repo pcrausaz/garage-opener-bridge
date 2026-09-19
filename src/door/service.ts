@@ -246,8 +246,13 @@ export class LiveDoorService implements DoorService {
       this.d.bus.emit("command", result);
       return result;
     }
-    if (this.stuck.isStuck()) {
-      const auditId = this.d.store.audit({ kind: "command", source: opts.source, command, from, to: from, outcome: "failed", detail: "relay_output_stuck" });
+    // Native mode: a held-on output is a fault (or the wrong mode) and a single activate would only toggle it off.
+    // Emulated mode: the press sequence starts by releasing it, so the command proceeds.
+    if (this.stuck.isStuck() && this.d.config.relay.pulseMode === "native") {
+      const auditId = this.d.store.audit({
+        kind: "command", source: opts.source, command, from, to: from, outcome: "failed",
+        detail: "relay_output_stuck: output held on after activate; set RELAY_PULSE_MODE=emulated",
+      });
       const result: CommandResult = { ok: false, command, from, to: from, pulsed: false, verified: false, auditId, startedAt: iso(startedAt), finishedAt: iso(this.now()), error: "relay_output_stuck" };
       this.d.bus.emit("command", result);
       return result;
@@ -291,12 +296,47 @@ export class LiveDoorService implements DoorService {
     return accepted;
   }
 
+  /**
+   * native: one activate (hardware that really pulses).
+   * emulated: the USL-Relay on Protect 7.2.x toggles the output on each activate, so a press is
+   * on → wait pulseMs → off, preceded by a release if the output is already on, and followed by a
+   * corrective activate if it is still on afterwards (ADR-0010).
+   */
   private async pulse(): Promise<void> {
     const { relayId, outputId } = this.mapping;
-    await this.d.protect.activateOutput(relayId, outputId);
-    if (this.d.config.relay.pulseMode === "emulated") {
-      await new Promise((r) => setTimeout(r, this.d.config.relay.pulseMs));
-      await this.d.protect.activateOutput(relayId, outputId);
+    const activate = () => this.d.protect.activateOutput(relayId, outputId);
+    if (this.d.config.relay.pulseMode === "native") {
+      await activate();
+      return;
     }
+    const { pulseMs, releaseMs } = this.d.config.relay;
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const readOutput = async () => {
+      this.relay = await this.d.protect.getRelay(relayId);
+      return this.relay.outputs.find((o) => o.id === outputId)?.state ?? "unknown";
+    };
+    const sequence: string[] = [];
+    let state = await readOutput();
+    sequence.push(`read=${state}`);
+    if (state === "on") {
+      await activate();
+      sequence.push("activate(release)");
+      await sleep(releaseMs);
+    }
+    await activate();
+    sequence.push("activate(on)");
+    await sleep(pulseMs);
+    await activate();
+    sequence.push("activate(off)");
+    state = await readOutput();
+    sequence.push(`read=${state}`);
+    if (state === "on") {
+      await activate();
+      sequence.push("activate(corrective)");
+      state = await readOutput();
+      sequence.push(`read=${state}`);
+    }
+    this.log.info({ sequence, pulseMs, releaseMs, finalOutputState: state }, "emulated pulse");
+    if (state !== "on") this.stuck.reset();
   }
 }

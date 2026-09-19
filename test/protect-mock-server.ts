@@ -12,6 +12,12 @@ export interface MockProtectOptions {
   /** ms after an activate before the sensor flips; `null` = never flips (stuck). */
   travelMs?: number | null;
   apiKey?: string;
+  /**
+   * `pulse`: every activate is a press (output stays off).
+   * `toggle`: activate flips the output state; the opener reacts only on the off→on edge
+   * (what the USL-Relay does on Protect 7.2.105, see ADR-0010).
+   */
+  relayBehaviour?: "pulse" | "toggle";
 }
 
 /**
@@ -25,7 +31,8 @@ export async function startMockProtect(opts: MockProtectOptions = {}) {
   const cameras = loadFixture<ProtectCamera[]>("cameras.json");
   const meta = loadFixture<{ applicationVersion: string }>("meta_info.json");
   const sensor = sensors[0]!;
-  const state = { sensor, activations: [] as { relayId: string; outputId: number; at: number }[], failNext: 0, timers: [] as NodeJS.Timeout[] };
+  const state = { sensor, activations: [] as { relayId: string; outputId: number; at: number }[], outputLog: [] as string[], failNext: 0, timers: [] as NodeJS.Timeout[] };
+  const behaviour = opts.relayBehaviour ?? "pulse";
 
   const app = Fastify({ logger: false });
   app.addHook("onRequest", async (req, reply) => {
@@ -48,8 +55,15 @@ export async function startMockProtect(opts: MockProtectOptions = {}) {
     const outputId = Number(req.params.out);
     if (!relay || !relay.outputs.some((o) => o.id === outputId)) return reply.code(404).send({ error: "not found" });
     state.activations.push({ relayId: relay.id, outputId, at: Date.now() });
+    const output = relay.outputs.find((o) => o.id === outputId)!;
+    let press = true;
+    if (behaviour === "toggle") {
+      press = output.state !== "on";
+      output.state = press ? "on" : "off";
+      state.outputLog.push(output.state);
+    }
     const travel = opts.travelMs === undefined ? 200 : opts.travelMs;
-    if (travel !== null) {
+    if (press && travel !== null) {
       const t = setTimeout(() => {
         state.sensor = { ...state.sensor, isOpened: !state.sensor.isOpened, openStatusChangedAt: Date.now() };
       }, travel);
@@ -68,6 +82,7 @@ export async function startMockProtect(opts: MockProtectOptions = {}) {
       state.sensor = { ...state.sensor, isOpened: v, openStatusChangedAt: Date.now() };
     },
     /** Mutate the mapped relay/output record as the console would report it. */
+    outputState: () => relays[0]!.outputs[0]!.state,
     setRelayOutput(patch: Partial<{ state: string; pulseDuration: number | null }>, relayPatch: Partial<{ state: string }> = {}) {
       const relay = relays[0]!;
       Object.assign(relay, relayPatch);

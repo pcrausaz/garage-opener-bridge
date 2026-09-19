@@ -49,7 +49,7 @@ export const ConfigSchema = z.object({
       verifyAfterSeconds: int.default(3),
     })
     .prefault({}),
-  relay: z.object({ pulseMode: z.enum(["native", "emulated"]).default("native"), pulseMs: int.default(500) }).prefault({}),
+  relay: z.object({ pulseMode: z.enum(["native", "emulated"]).default("native"), pulseMs: int.default(500), releaseMs: int.default(300) }).prefault({}),
   poll: z.object({ movingMs: int.default(2000), idleMs: int.default(15000) }).prefault({}),
   alerts: z
     .object({
@@ -96,6 +96,7 @@ export const ENV_MAP: Record<string, string> = {
   DOOR_VERIFY_AFTER_SECONDS: "door.verifyAfterSeconds",
   RELAY_PULSE_MODE: "relay.pulseMode",
   RELAY_PULSE_MS: "relay.pulseMs",
+  RELAY_RELEASE_MS: "relay.releaseMs",
   POLL_MOVING_MS: "poll.movingMs",
   POLL_IDLE_MS: "poll.idleMs",
   ALERT_OPEN_TOO_LONG_MINUTES: "alerts.openTooLongMinutes",
