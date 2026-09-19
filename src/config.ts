@@ -20,7 +20,13 @@ export const ConfigSchema = z.object({
     .object({
       url: z.string().url().optional(),
       apiKey: z.string().optional(),
-      tls: z.string().regex(/^(insecure|system|fingerprint:[0-9a-fA-F:]{64,95})$/).default("insecure"),
+      tls: z
+        .string()
+        .transform(normalizeTls)
+        .pipe(z.string().regex(/^(insecure|system|fingerprint:[0-9a-f]{64})$/, {
+          message: "PROTECT_TLS must be `insecure`, `system`, or `fingerprint:<64 hex sha256>` (colons/case ignored)",
+        }))
+        .default("insecure"),
     })
     .prefault({}),
   bridge: z
@@ -119,6 +125,21 @@ function setPath(obj: Record<string, unknown>, path: string, value: unknown): vo
   cur[parts[parts.length - 1]!] = value;
 }
 
+/** Accepts the usual copy-paste variants of a certificate fingerprint. */
+export function normalizeTls(v: string): string {
+  // Tolerate quotes and trailing inline comments pasted from .env-style files.
+  const t = v.replace(/\s+#.*$/, "").trim().replace(/^["']|["']$/g, "");
+  if (t === "insecure" || t === "system") return t;
+  const m = /^(?:fingerprint:)?(?:sha-?256(?:\s+fingerprint)?\s*[:=]\s*)?([0-9a-fA-F:\s]+)$/i.exec(t);
+  if (!m) return t;
+  const hex = m[1]!.replace(/[:\s]/g, "").toLowerCase();
+  return hex.length === 64 ? `fingerprint:${hex}` : t;
+}
+
+function redact(name: string, value: string): string {
+  return /KEY|TOKEN|SECRET/.test(name) ? `${value.slice(0, 3)}…(${value.length} chars)` : value;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env, configFile?: string): Config {
   const raw: Record<string, unknown> = {};
   const file = configFile ?? env.CONFIG_FILE;
@@ -130,7 +151,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, configFile?: st
     const v = env[name];
     if (v !== undefined && v !== "") setPath(raw, path, v);
   }
-  const cfg = ConfigSchema.parse(raw);
+  const result = ConfigSchema.safeParse(raw);
+  if (!result.success) {
+    const lines = result.error.issues.map((i) => {
+      const path = i.path.join(".");
+      const envName = Object.entries(ENV_MAP).find(([, p]) => p === path)?.[0];
+      const got = envName && env[envName] !== undefined ? ` (got ${JSON.stringify(redact(envName, env[envName]!))})` : "";
+      return `${envName ?? path}: ${i.message}${got}`;
+    });
+    throw new Error(`Invalid bridge configuration:\n  ${lines.join("\n  ")}`);
+  }
+  const cfg = result.data;
   validateMode(cfg);
   return cfg;
 }

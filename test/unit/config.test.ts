@@ -45,3 +45,27 @@ describe("config", () => {
     expect(makeConfig({ bridge: { mode: "mock" } }).bridge.mockTokenPrefix).toBe("demo-");
   });
 });
+
+import { normalizeTls } from "../../src/config.js";
+
+describe("PROTECT_TLS normalisation", () => {
+  const hex = "618ac07b24c6596f6fa3186d4ccadabdd990dee4e3099a659af7e5dbf5da9506";
+  it("accepts the documented forms and common copy-paste variants", () => {
+    expect(normalizeTls("insecure")).toBe("insecure");
+    expect(normalizeTls("system")).toBe("system");
+    expect(normalizeTls("insecure               # switch to fingerprint:<sha256> after capture")).toBe("insecure");
+    expect(normalizeTls('"insecure"')).toBe("insecure");
+    expect(normalizeTls(`fingerprint:${hex}`)).toBe(`fingerprint:${hex}`);
+    expect(normalizeTls(`fingerprint:${hex.toUpperCase()}`)).toBe(`fingerprint:${hex}`);
+    expect(normalizeTls("fingerprint:61:8A:C0:7B:24:C6:59:6F:6F:A3:18:6D:4C:CA:DA:BD:D9:90:DE:E4:E3:09:9A:65:9A:F7:E5:DB:F5:DA:95:06")).toBe(`fingerprint:${hex}`);
+    expect(normalizeTls(`sha256:${hex}`)).toBe(`fingerprint:${hex}`);
+    expect(normalizeTls(`fingerprint:sha256:${hex}`)).toBe(`fingerprint:${hex}`);
+    expect(normalizeTls("SHA256 Fingerprint=61:8A:C0:7B:24:C6:59:6F:6F:A3:18:6D:4C:CA:DA:BD:D9:90:DE:E4:E3:09:9A:65:9A:F7:E5:DB:F5:DA:95:06")).toBe(`fingerprint:${hex}`);
+  });
+  it("rejects garbage with a message naming the env var and value", () => {
+    expect(() => loadConfig({ BRIDGE_MODE: "mock", PROTECT_TLS: "fingerprint:abc" } as NodeJS.ProcessEnv)).toThrow(/PROTECT_TLS must be .*\(got "fingerprint:abc"\)/);
+  });
+  it("redacts secrets in config errors", () => {
+    expect(() => loadConfig({ BRIDGE_MODE: "live", PROTECT_URL: "not a url", PROTECT_API_KEY: "supersecretvalue", BRIDGE_TOKENS: "t" } as NodeJS.ProcessEnv)).not.toThrow(/supersecretvalue/);
+  });
+});
