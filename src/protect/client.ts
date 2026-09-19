@@ -41,7 +41,9 @@ export function buildDispatcher(tls: string): Dispatcher {
   if (tls === "insecure") return new Agent({ connect: { rejectUnauthorized: false } });
   if (tls.startsWith("fingerprint:")) {
     const expected = normalizeFingerprint(tls);
-    const base = buildConnector({ rejectUnauthorized: false });
+    // maxCachedSessions: 0 disables TLS session resumption. On a resumed session Node returns an empty
+    // peer certificate (no fingerprint256), which made every connection after the first fail the pin check.
+    const base = buildConnector({ rejectUnauthorized: false, maxCachedSessions: 0 });
     return new Agent({
       connect: (opts, cb) => {
         base(opts, (err, socket) => {
@@ -49,9 +51,13 @@ export function buildDispatcher(tls: string): Dispatcher {
           const tlsSocket = socket as TLSSocket;
           const cert = typeof tlsSocket.getPeerCertificate === "function" ? tlsSocket.getPeerCertificate() : undefined;
           const actual = cert?.fingerprint256?.replace(/:/g, "").toUpperCase();
-          if (!actual || actual !== expected) {
+          if (!actual) {
             socket.destroy();
-            return cb(new ProtectError(`TLS fingerprint mismatch (got ${actual ?? "none"})`), null);
+            return cb(new ProtectError("TLS fingerprint unavailable (empty peer certificate; session resumed?)"), null);
+          }
+          if (actual !== expected) {
+            socket.destroy();
+            return cb(new ProtectError(`TLS fingerprint mismatch (got ${actual})`), null);
           }
           cb(null, socket);
         });
