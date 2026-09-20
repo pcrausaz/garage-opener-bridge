@@ -3,7 +3,7 @@ import type { Config } from "./config.js";
 import type { Logger } from "./logger.js";
 import type { ProtectClient } from "./protect/types.js";
 import { HttpProtectClient } from "./protect/client.js";
-import { ProtectSimulator, SIM_IDS } from "./protect/simulator.js";
+import { ProtectSimulator, SIM_IDS, type SimulatorOptions } from "./protect/simulator.js";
 import { discover, type DiscoveryResult, type DoorMapping } from "./discovery.js";
 import { Store } from "./store/db.js";
 import { Bus } from "./events/bus.js";
@@ -50,11 +50,11 @@ export class Instance {
     readonly config: Config,
     logger: Logger,
     readonly mode: "live" | "mock",
-    opts: { protect?: ProtectClient; storeFile?: string; transports?: NotificationTransport[]; label?: string } = {},
+    opts: { protect?: ProtectClient; storeFile?: string; transports?: NotificationTransport[]; label?: string; simulator?: Partial<SimulatorOptions> } = {},
   ) {
     this.log = logger.child({ component: "instance", label: opts.label ?? mode });
     if (mode === "mock") {
-      this.sim = opts.protect ? null : new ProtectSimulator({ travelMs: config.door.travelSeconds * 1000 });
+      this.sim = opts.protect ? null : new ProtectSimulator({ travelMs: config.door.travelSeconds * 1000, ...(opts.simulator ?? {}) });
       this.protect = opts.protect ?? this.sim!;
       this.store = new Store(opts.storeFile ?? ":memory:");
     } else {

@@ -52,7 +52,7 @@ export const ConfigSchema = z.object({
       verifyAfterSeconds: int.default(3),
     })
     .prefault({}),
-  relay: z.object({ pulseMode: z.enum(["native", "emulated"]).default("native"), pulseMs: int.default(500), releaseMs: int.default(300) }).prefault({}),
+  relay: z.object({ pulseMode: z.enum(["native", "emulated"]).default("emulated"), pulseMs: int.default(800), releaseMs: int.default(300) }).prefault({}),
   poll: z.object({ movingMs: int.default(2000), idleMs: int.default(15000) }).prefault({}),
   alerts: z
     .object({

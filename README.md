@@ -15,7 +15,7 @@ docker run -p 8787:8787 -v garage-data:/data \
   -e RELAY_PULSE_MODE=emulated -e RELAY_PULSE_MS=800 \
   -e TZ=America/Chicago ghcr.io/pcrausaz/garage-opener-bridge:latest
 
-# mock (review bridge / local demo)
+# mock (review bridge / local demo) — the simulator's relay toggles on activate like the real USL-Relay
 docker run -p 8787:8787 -e BRIDGE_MODE=mock ghcr.io/pcrausaz/garage-opener-bridge:latest
 curl -H 'Authorization: Bearer demo-anything' localhost:8787/v1/state
 ```
@@ -36,7 +36,7 @@ Environment variables (or the same keys nested in `CONFIG_FILE` YAML; env wins):
 | `DOOR_RELAY_ID`, `DOOR_OUTPUT_ID`, `DOOR_SENSOR_ID` | auto | auto-paired when exactly one pulse output + one garage sensor exist; else required |
 | `DOOR_INTERIOR_CAMERA_ID`, `DOOR_DRIVEWAY_CAMERA_ID` | auto | cameras with vehicle smart detection named *Garage* / *Driveway* |
 | `DOOR_TRAVEL_SECONDS` / `DOOR_VERIFY_AFTER_SECONDS` | `15` / `3` | verification happens after the sum |
-| `RELAY_PULSE_MODE` / `RELAY_PULSE_MS` / `RELAY_RELEASE_MS` | `native` / `500` / `300` | **Use `emulated` for the USL-Relay on Protect 7.2.x**: `activate` toggles the output (on, then off on the next call), so a press is on → wait `RELAY_PULSE_MS` (800 recommended for this hardware) → off, with a release first if the output is already on. `native` = one activate, for hardware whose output really pulses. See ADR-0010. |
+| `RELAY_PULSE_MODE` / `RELAY_PULSE_MS` / `RELAY_RELEASE_MS` | `emulated` / `800` / `300` | Defaults fit the USL-Relay on Protect 7.2.x, where `activate` **toggles** the output (on, then off on the next call): a press is on → wait `RELAY_PULSE_MS` → off, with a release first if the output is already on. Set `native` (one activate) only for hardware whose output really pulses. See ADR-0010. |
 | `POLL_MOVING_MS` / `POLL_IDLE_MS` | `2000` / `15000` | sensor polling |
 | `ALERT_OPEN_TOO_LONG_MINUTES` | `15` | rule 1 |
 | `ALERT_NIGHTLY_TIME` / `ALERT_NIGHTLY_AUTOCLOSE` / `TZ` | `22:00` / `false` / `UTC` | rule 2 |

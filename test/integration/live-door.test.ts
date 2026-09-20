@@ -9,7 +9,8 @@ import { CaptureTransport } from "../helpers.js";
 describe("live door service against the fixture-backed Protect mock", () => {
   let protect: Awaited<ReturnType<typeof startMockProtect>>;
   beforeAll(async () => {
-    protect = await startMockProtect({ travelMs: 200 });
+    // a truly pulsing relay + native mode; the toggling USL-Relay is covered in relay-toggle.test.ts
+    protect = await startMockProtect({ travelMs: 200, relayBehaviour: "pulse" });
   });
   afterAll(async () => {
     await protect.close();
@@ -21,6 +22,7 @@ describe("live door service against the fixture-backed Protect mock", () => {
       protect: { url: protect.url, apiKey: protect.apiKey, tls: "system" },
       door: { travelSeconds: 1, verifyAfterSeconds: 0 },
       poll: { movingMs: 100, idleMs: 300 },
+      relay: { pulseMode: "native" },
       ...extra,
     });
 
@@ -91,7 +93,7 @@ describe("live door service against the fixture-backed Protect mock", () => {
   });
 
   it("reports STUCK when the sensor never confirms and recovers on the next edge", async () => {
-    const stuck = await startMockProtect({ travelMs: null });
+    const stuck = await startMockProtect({ travelMs: null, relayBehaviour: "pulse" });
     const inst = new Instance(cfg({ protect: { url: stuck.url, apiKey: stuck.apiKey, tls: "system" } }), silentLogger, "live", { storeFile: ":memory:", transports: [] });
     await inst.start();
     try {

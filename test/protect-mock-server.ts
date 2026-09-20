@@ -13,9 +13,9 @@ export interface MockProtectOptions {
   travelMs?: number | null;
   apiKey?: string;
   /**
-   * `pulse`: every activate is a press (output stays off).
-   * `toggle`: activate flips the output state; the opener reacts only on the off→on edge
-   * (what the USL-Relay does on Protect 7.2.105, see ADR-0010).
+   * `toggle` (default, the real USL-Relay on Protect 7.2.105, ADR-0010): activate flips the output
+   * state; the opener reacts only on the off→on edge.
+   * `pulse`: every activate is a press and the output stays off (hardware that truly pulses).
    */
   relayBehaviour?: "pulse" | "toggle";
 }
@@ -32,7 +32,7 @@ export async function startMockProtect(opts: MockProtectOptions = {}) {
   const meta = loadFixture<{ applicationVersion: string }>("meta_info.json");
   const sensor = sensors[0]!;
   const state = { sensor, activations: [] as { relayId: string; outputId: number; at: number }[], outputLog: [] as string[], failNext: 0, timers: [] as NodeJS.Timeout[] };
-  const behaviour = opts.relayBehaviour ?? "pulse";
+  const behaviour = opts.relayBehaviour ?? "toggle";
 
   const app = Fastify({ logger: false });
   app.addHook("onRequest", async (req, reply) => {

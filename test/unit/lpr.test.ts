@@ -13,7 +13,7 @@ describe("LPR rule engine", () => {
   });
 
   it("known plate + door CLOSED + nobody inside → opens, notifies, undoable", async () => {
-    const m = await mockInstance();
+    const m = await mockInstance({}, { nativePulse: true });
     inst = m.inst;
     await inst.mockAction("plate-seen", { plate: "abc-123" });
     expect(inst.lpr!.decisions.map((d) => d.rule)).toEqual(["lpr-auto-open"]);
@@ -33,7 +33,7 @@ describe("LPR rule engine", () => {
   });
 
   it("undo expires after undoSeconds", async () => {
-    const m = await mockInstance();
+    const m = await mockInstance({}, { nativePulse: true });
     inst = m.inst;
     await inst.mockAction("plate-seen", { plate: "ABC123" });
     const id = inst.lpr!.pendingUndo()[0]!.id;
@@ -42,7 +42,7 @@ describe("LPR rule engine", () => {
   });
 
   it("acts on edges only: a plate that stays visible never re-triggers", async () => {
-    const m = await mockInstance();
+    const m = await mockInstance({}, { nativePulse: true });
     inst = m.inst;
     await inst.mockAction("plate-seen", { plate: "ABC123" });
     await vi.advanceTimersByTimeAsync(12_100);
@@ -56,7 +56,7 @@ describe("LPR rule engine", () => {
   });
 
   it("unknown plates and a car already inside never open the door", async () => {
-    const m = await mockInstance();
+    const m = await mockInstance({}, { nativePulse: true });
     inst = m.inst;
     await inst.mockAction("plate-seen", { plate: "ZZZ999" });
     expect(inst.door.snapshot().door).toBe("CLOSED");
@@ -68,7 +68,7 @@ describe("LPR rule engine", () => {
   });
 
   it("departure: presence ends and the plate shows on the driveway → close after the grace period", async () => {
-    const m = await mockInstance();
+    const m = await mockInstance({}, { nativePulse: true });
     inst = m.inst;
     await inst.mockAction("vehicle-arrived");
     const o = inst.door.open({ source: "test" });
@@ -84,7 +84,7 @@ describe("LPR rule engine", () => {
   });
 
   it("departure close is cancelled when the car comes back or a hold is set", async () => {
-    const m = await mockInstance();
+    const m = await mockInstance({}, { nativePulse: true });
     inst = m.inst;
     await inst.mockAction("vehicle-arrived");
     const o = inst.door.open({ source: "test" });
@@ -99,7 +99,7 @@ describe("LPR rule engine", () => {
   });
 
   it("is not instantiated in live mode unless features.lpr is on", async () => {
-    const off = await mockInstance({ features: { lpr: false } });
+    const off = await mockInstance({ features: { lpr: false } }, { nativePulse: true });
     inst = off.inst;
     expect(inst.lpr).not.toBeNull(); // mock mode always has it for the demo
     expect(inst.lpr!.isKnown("abc 123")).toBe(true);

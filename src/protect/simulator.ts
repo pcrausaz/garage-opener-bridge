@@ -15,7 +15,7 @@ export interface SimulatorOptions {
   tiltMs?: number;
   batteryPercentage?: number;
   now?: () => number;
-  /** `pulse` (default): each activate is a press. `toggle`: activate flips the output; press on off→on (ADR-0010). */
+  /** `toggle` (default, like the USL-Relay on Protect 7.2.x, ADR-0010): activate flips the output; press on off→on. `pulse`: each activate is a press. */
   relayBehaviour?: "pulse" | "toggle";
 }
 
@@ -47,7 +47,7 @@ export class ProtectSimulator extends EventEmitter implements ProtectClient {
     this.tiltMs = opts.tiltMs ?? Math.min(1000, this.travelMs / 5);
     this.battery = opts.batteryPercentage ?? 76;
     this.now = opts.now ?? Date.now;
-    this.relayBehaviour = opts.relayBehaviour ?? "pulse";
+    this.relayBehaviour = opts.relayBehaviour ?? "toggle";
     this.openStatusChangedAt = this.now();
   }
 

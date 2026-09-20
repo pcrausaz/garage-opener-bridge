@@ -22,7 +22,7 @@ describe("alert engine (mock instance, fake timers)", () => {
   }
 
   it("rule 1: door open longer than N minutes → alert with actions", async () => {
-    const m = await mockInstance();
+    const m = await mockInstance({}, { nativePulse: true });
     inst = m.inst;
     await openDoor(inst);
     await vi.advanceTimersByTimeAsync(14 * MIN);
@@ -39,7 +39,7 @@ describe("alert engine (mock instance, fake timers)", () => {
   });
 
   it("hold-open suppresses rule 1 and re-arms after the hold expires", async () => {
-    const m = await mockInstance();
+    const m = await mockInstance({}, { nativePulse: true });
     inst = m.inst;
     await openDoor(inst);
     inst.hold.set(30, "test");
@@ -53,7 +53,7 @@ describe("alert engine (mock instance, fake timers)", () => {
   });
 
   it("rule 2: nightly check notifies when open, is silent when closed or held, and can auto-close", async () => {
-    const m = await mockInstance();
+    const m = await mockInstance({}, { nativePulse: true });
     inst = m.inst;
     await inst.alerts.runNightly();
     expect(m.capture.alerts).toHaveLength(0);
@@ -65,7 +65,7 @@ describe("alert engine (mock instance, fake timers)", () => {
     expect(m.capture.alerts).toHaveLength(1);
     await inst.stop();
 
-    const a = await mockInstance({ alerts: { nightlyAutoclose: true } });
+    const a = await mockInstance({ alerts: { nightlyAutoclose: true } }, { nativePulse: true });
     inst = a.inst;
     await openDoor(inst);
     await inst.alerts.runNightly();
@@ -76,7 +76,7 @@ describe("alert engine (mock instance, fake timers)", () => {
   });
 
   it("rule 2 fires from the scheduler at 22:00 local time", async () => {
-    const m = await mockInstance({ tz: "UTC" });
+    const m = await mockInstance({ tz: "UTC" }, { nativePulse: true });
     inst = m.inst;
     await openDoor(inst);
     await vi.advanceTimersByTimeAsync(9 * 60 * MIN + 59 * MIN); // 21:59
@@ -87,7 +87,7 @@ describe("alert engine (mock instance, fake timers)", () => {
   });
 
   it("rule 3: car inside + door open > M minutes, and car left + door open > M minutes", async () => {
-    const m = await mockInstance();
+    const m = await mockInstance({}, { nativePulse: true });
     inst = m.inst;
     await openDoor(inst);
     await inst.mockAction("vehicle-arrived");
@@ -99,7 +99,7 @@ describe("alert engine (mock instance, fake timers)", () => {
   });
 
   it("rule 3 respects the hold flag", async () => {
-    const m = await mockInstance();
+    const m = await mockInstance({}, { nativePulse: true });
     inst = m.inst;
     await openDoor(inst);
     inst.hold.set(120, "test");
@@ -109,7 +109,7 @@ describe("alert engine (mock instance, fake timers)", () => {
   });
 
   it("vehicle presence uses the grace period for detection-ended events", async () => {
-    const m = await mockInstance();
+    const m = await mockInstance({}, { nativePulse: true });
     inst = m.inst;
     inst.vehicle.detectionStarted();
     expect(inst.vehicle.isPresent()).toBe(true);

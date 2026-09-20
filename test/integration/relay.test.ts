@@ -19,12 +19,14 @@ describe("relay record refresh and stuck-output handling (fixture mock Protect)"
   const v = new ContractValidator();
 
   beforeAll(async () => {
-    protect = await startMockProtect({ travelMs: 100 });
+    // native mode on a truly pulsing relay: a held-on output is a fault and commands are refused
+    protect = await startMockProtect({ travelMs: 100, relayBehaviour: "pulse" });
     const cfg = makeConfig({
       bridge: { mode: "live", tokens: ["live-token-1"] },
       protect: { url: protect.url, apiKey: protect.apiKey, tls: "system" },
       door: { travelSeconds: 1, verifyAfterSeconds: 0 },
       poll: { movingMs: 100, idleMs: 100 },
+      relay: { pulseMode: "native" },
     });
     inst = new Instance(cfg, logger, "live", { storeFile: ":memory:", transports: [] });
     await inst.start();

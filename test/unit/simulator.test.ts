@@ -6,7 +6,7 @@ describe("protect simulator", () => {
   afterEach(() => vi.useRealTimers());
 
   it("opens and closes with travel time", async () => {
-    const sim = new ProtectSimulator({ travelMs: 1000, tiltMs: 100 });
+    const sim = new ProtectSimulator({ travelMs: 1000, tiltMs: 100, relayBehaviour: "pulse" });
     await sim.activateOutput(SIM_IDS.relayId, 0);
     expect(sim.isOpened).toBe(false);
     vi.advanceTimersByTime(150);

@@ -13,7 +13,13 @@ describe("config", () => {
     expect(c.lpr.knownPlates).toEqual(["abc 123", "XYZ-9"]);
     expect(c.bridge.tokens).toEqual(["aaaaaaaa", "bbbbbbbb"]);
     expect(c.alerts.nightlyTime).toBe("22:00");
-    expect(c.relay.pulseMode).toBe("native");
+    expect(c.relay).toEqual({ pulseMode: "emulated", pulseMs: 800, releaseMs: 300 }); // USL-Relay defaults (ADR-0010)
+  });
+
+  it("RELAY_PULSE_MODE=native still parses for hardware that truly pulses", () => {
+    const c = loadConfig({ BRIDGE_MODE: "mock", RELAY_PULSE_MODE: "native", RELAY_PULSE_MS: "500" });
+    expect(c.relay).toEqual({ pulseMode: "native", pulseMs: 500, releaseMs: 300 });
+    expect(() => loadConfig({ BRIDGE_MODE: "mock", RELAY_PULSE_MODE: "bogus" })).toThrow();
   });
 
   it("live mode requires console credentials and a token", () => {
