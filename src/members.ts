@@ -168,6 +168,18 @@ export class MembersService {
     return rows.map((r) => this.toMember(r));
   }
 
+  /** Rename a member; an admin may rename anyone, a member only itself. Admin rows keep the new name across restarts. */
+  rename(id: string, name: string, by: MemberIdentity): Member | "not_found" | "forbidden" {
+    const row = this.store.db.prepare("SELECT * FROM members WHERE id = ? AND revoked_at IS NULL").get(id) as MemberRow | undefined;
+    if (!row) return "not_found";
+    if (by.kind !== "admin" && by.id !== id) return "forbidden";
+    const trimmed = name.trim();
+    this.store.db.prepare("UPDATE members SET name = ? WHERE id = ?").run(trimmed, id);
+    for (const a of this.admins) if (a.id === id) a.name = trimmed;
+    if (trimmed !== row.name) this.store.audit({ kind: "member", source: by.id === id ? "self" : "admin", outcome: "ok", detail: `renamed ${row.name} to ${trimmed}`, member: by.name });
+    return this.toMember({ ...row, name: trimmed });
+  }
+
   /** Revoke a member token; admin rows configured via BRIDGE_TOKENS cannot be revoked here. */
   revoke(id: string, by: MemberIdentity): "ok" | "not_found" | "forbidden" {
     const row = this.store.db.prepare("SELECT * FROM members WHERE id = ? AND revoked_at IS NULL").get(id) as MemberRow | undefined;

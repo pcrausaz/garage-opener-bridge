@@ -137,8 +137,17 @@ describe("bridge HTTP API matches packages/contract/bridge.openapi.yaml", () => 
     const inv = await app.inject({ method: "POST", url: "/v1/invites", headers: admin, payload: { publicUrl: "http://bridge.local:8787/" } });
     expect(inv.statusCode).toBe(201);
     expect(v.validate("Invite", inv.json())).toEqual({ ok: true });
-    expect(inv.json().joinUrl).toBe(`garageopener://join?v=1&b=${encodeURIComponent("http://bridge.local:8787")}&c=${inv.json().code}`);
+    const expiresUnix = Math.floor(Date.parse(inv.json().expiresAt) / 1000);
+    expect(inv.json().joinUrl).toBe(`garageopener://join?v=1&b=${encodeURIComponent("http://bridge.local:8787")}&c=${inv.json().code}&e=${expiresUnix}`);
     expect(inv.json().bridgeUrl).toBe("http://bridge.local:8787");
+    expect(inv.json().name).toBeUndefined();
+    const named = await app.inject({ method: "POST", url: "/v1/invites", headers: admin, payload: { name: " Margo Ô " } });
+    expect(named.statusCode).toBe(201);
+    expect(v.validate("Invite", named.json())).toEqual({ ok: true });
+    expect(named.json().name).toBe("Margo Ô");
+    expect(named.json().joinUrl.endsWith(`&n=${encodeURIComponent("Margo Ô")}`)).toBe(true);
+    expect((await app.inject({ method: "POST", url: "/v1/invites", headers: admin, payload: { name: "" } })).statusCode).toBe(400);
+    expect((await app.inject({ method: "POST", url: "/v1/invites", headers: admin, payload: { name: "x".repeat(49) } })).statusCode).toBe(400);
 
     const bad = await app.inject({ method: "POST", url: `/v1/invites/${inv.json().code}/claim`, payload: {} });
     expect(bad.statusCode).toBe(400);
@@ -163,6 +172,14 @@ describe("bridge HTTP API matches packages/contract/bridge.openapi.yaml", () => 
     expect(mine.json().members[0]).toMatchObject({ name: "Contract Phone", isCurrent: true });
 
     const id = claim.json().member.id;
+    expect((await app.inject({ method: "PATCH", url: `/v1/members/${id}`, headers: memberAuth, payload: {} })).statusCode).toBe(400);
+    expect((await app.inject({ method: "PATCH", url: `/v1/members/${list.json().members[0].id}`, headers: memberAuth, payload: { name: "Nope" } })).statusCode).toBe(403);
+    expect((await app.inject({ method: "PATCH", url: "/v1/members/mem_nope", headers: admin, payload: { name: "x" } })).statusCode).toBe(404);
+    const renamed = await app.inject({ method: "PATCH", url: `/v1/members/${id}`, headers: memberAuth, payload: { name: "Margo" } });
+    expect(renamed.statusCode).toBe(200);
+    expect(v.validate("Member", renamed.json())).toEqual({ ok: true });
+    expect(renamed.json()).toMatchObject({ id, name: "Margo", isCurrent: true });
+    expect((await app.inject({ method: "PATCH", url: `/v1/members/${id}`, headers: admin, payload: { name: "Margo M." } })).json()).toMatchObject({ name: "Margo M.", isCurrent: false });
     expect((await app.inject({ method: "DELETE", url: "/v1/members/mem_nope", headers: admin })).statusCode).toBe(404);
     expect((await app.inject({ method: "DELETE", url: `/v1/members/${list.json().members[0].id}`, headers: memberAuth })).statusCode).toBe(403);
     expect((await app.inject({ method: "DELETE", url: `/v1/members/${id}`, headers: admin })).statusCode).toBe(204);

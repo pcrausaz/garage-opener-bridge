@@ -240,7 +240,8 @@ paths:
       summary: Create a one-time invite code for another phone (admin token only)
       description: |
         The code is valid for 15 minutes and can be claimed once. `joinUrl` is a `garageopener://join` link carrying the
-        bridge address and the code; show it as a QR or share it. Member tokens cannot create invites.
+        bridge address (`b`), the code (`c`), the expiry as unix seconds (`e`) and, when given, the suggested member
+        name (`n`); show it as a QR or share it. Member tokens cannot create invites.
       requestBody:
         required: false
         content:
@@ -249,6 +250,7 @@ paths:
               type: object
               properties:
                 publicUrl: { type: string, format: uri, description: Address the invitee should use (defaults to PUBLIC_URL or the request origin) }
+                name: { type: string, minLength: 1, maxLength: 48, description: "Who the invite is for, e.g. Margo; pre-fills the name on the joining phone" }
       responses:
         "201":
           description: Created
@@ -276,7 +278,7 @@ paths:
               type: object
               required: [deviceName]
               properties:
-                deviceName: { type: string, minLength: 1, maxLength: 48, description: "e.g. Margo's iPhone" }
+                deviceName: { type: string, minLength: 1, maxLength: 48, description: "Member name shown to the admin and in the audit log, e.g. Margo" }
       responses:
         "200":
           description: Claimed; the code is now consumed
@@ -305,6 +307,34 @@ paths:
                     items: { $ref: "#/components/schemas/Member" }
         "401": { $ref: "#/components/responses/Unauthorized" }
   /v1/members/{id}:
+    patch:
+      tags: [family]
+      operationId: renameMember
+      summary: Rename a member (admin token renames anyone; a member may rename itself)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 48 }
+      responses:
+        "200":
+          description: Renamed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Member" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Unknown member }
     delete:
       tags: [family]
       operationId: revokeMember
@@ -557,8 +587,9 @@ components:
       properties:
         code: { type: string }
         expiresAt: { type: string, format: date-time }
-        joinUrl: { type: string, description: "`garageopener://join?v=1&b=<bridge url>&c=<code>`" }
+        joinUrl: { type: string, description: "`garageopener://join?v=1&b=<bridge url>&c=<code>&e=<unix seconds>[&n=<name>]`" }
         bridgeUrl: { type: string, format: uri }
+        name: { type: string, description: "Suggested member name, echoed from the request" }
     InviteClaim:
       type: object
       required: [token, member, bridge]

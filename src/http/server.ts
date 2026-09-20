@@ -234,12 +234,20 @@ export async function buildServer(o: ServerOptions) {
 
   const requestOrigin = (req: FastifyRequest) => `${req.protocol}://${req.headers.host ?? `localhost:${config.port}`}`;
 
-  app.post<{ Body: { publicUrl?: string } | undefined }>("/v1/invites", { config: { operationId: "createInvite", rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req, reply) => {
+  const validName = (v: unknown): v is string => typeof v === "string" && v.trim().length >= 1 && v.length <= 48;
+
+  app.post<{ Body: { publicUrl?: string; name?: unknown } | undefined }>("/v1/invites", { config: { operationId: "createInvite", rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req, reply) => {
     if (req.member!.kind !== "admin") return err(reply, 403, "forbidden", "an admin token is required to create invites");
+    const rawName = req.body?.name;
+    if (rawName !== undefined && !validName(rawName)) return err(reply, 400, "validation", "name must be 1-48 chars");
+    const name = rawName === undefined ? undefined : rawName.trim();
     const bridgeUrl = (req.body?.publicUrl ?? config.publicUrl ?? requestOrigin(req)).replace(/\/+$/, "");
     const inv = req.inst!.members.createInvite(req.member!.id);
-    req.inst!.store.audit({ kind: "member", source: "admin", member: req.member!.name, outcome: "ok", detail: "invite created" });
-    return reply.code(201).send({ code: inv.code, expiresAt: inv.expiresAt, bridgeUrl, joinUrl: `garageopener://join?v=1&b=${encodeURIComponent(bridgeUrl)}&c=${inv.code}` });
+    req.inst!.store.audit({ kind: "member", source: "admin", member: req.member!.name, outcome: "ok", detail: name ? `invite created for ${name}` : "invite created" });
+    const expiresUnix = Math.floor(Date.parse(inv.expiresAt) / 1000);
+    let joinUrl = `garageopener://join?v=1&b=${encodeURIComponent(bridgeUrl)}&c=${inv.code}&e=${expiresUnix}`;
+    if (name) joinUrl += `&n=${encodeURIComponent(name)}`;
+    return reply.code(201).send({ code: inv.code, expiresAt: inv.expiresAt, bridgeUrl, joinUrl, ...(name ? { name } : {}) });
   });
 
   app.post<{ Params: { code: string }; Body: { deviceName?: unknown } | undefined }>(
@@ -247,7 +255,7 @@ export async function buildServer(o: ServerOptions) {
     { config: { operationId: "claimInvite", rateLimit: { max: 5, timeWindow: "1 minute", keyGenerator: (req) => req.ip } } },
     async (req, reply) => {
       const name = req.body?.deviceName;
-      if (typeof name !== "string" || name.trim().length < 1 || name.length > 48) return err(reply, 400, "validation", "deviceName (1-48 chars) is required");
+      if (!validName(name)) return err(reply, 400, "validation", "deviceName (1-48 chars) is required");
       let inst: Instance | undefined;
       let ownerToken: string | undefined;
       if (o.registry) {
@@ -273,6 +281,17 @@ export async function buildServer(o: ServerOptions) {
     const members = visible.map((m) => ({ ...m, isCurrent: m.id === me.id }));
     if (validateResponses) for (const m of members) validator.assert("Member", m);
     return { members };
+  });
+
+  app.patch<{ Params: { id: string }; Body: { name?: unknown } | undefined }>("/v1/members/:id", { config: { operationId: "renameMember" } }, async (req, reply) => {
+    const name = req.body?.name;
+    if (!validName(name)) return err(reply, 400, "validation", "name (1-48 chars) is required");
+    const r = req.inst!.members.rename(req.params.id, name, req.member!);
+    if (r === "not_found") return err(reply, 404, "not_found", "unknown member");
+    if (r === "forbidden") return err(reply, 403, "forbidden", "admin token required, or rename your own phone");
+    const member = { ...r, isCurrent: r.id === req.member!.id };
+    if (validateResponses) validator.assert("Member", member);
+    return member;
   });
 
   app.delete<{ Params: { id: string } }>("/v1/members/:id", { config: { operationId: "revokeMember" } }, async (req, reply) => {

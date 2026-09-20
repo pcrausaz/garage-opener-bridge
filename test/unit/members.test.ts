@@ -66,6 +66,24 @@ describe("members and invites", () => {
     expect(m.list().map((x) => x.kind)).toEqual(["admin", "admin"]);
   });
 
+  it("rename: admin renames anyone (admins included, kept in memory), member only itself; audited only when changed", () => {
+    const { m, store } = setup();
+    const admin = m.authenticate("admin-token-aaa")!;
+    const a = m.claim(m.createInvite(admin.id).code, "A")!;
+    const b = m.claim(m.createInvite(admin.id).code, "B")!;
+    const idA = m.authenticate(a.token)!;
+    expect(m.rename(b.member.id, "Bee", idA)).toBe("forbidden");
+    expect(m.rename("mem_nope", "x", admin)).toBe("not_found");
+    expect(m.rename(a.member.id, "  Margo ", idA)).toMatchObject({ id: a.member.id, name: "Margo", kind: "member" });
+    expect(m.authenticate(a.token)).toMatchObject({ name: "Margo" });
+    expect(m.rename(b.member.id, "Bee", admin)).toMatchObject({ name: "Bee" });
+    expect(m.rename(admin.id, "Pascal", admin)).toMatchObject({ name: "Pascal", kind: "admin" });
+    expect(m.authenticate("admin-token-aaa")).toMatchObject({ name: "Pascal" });
+    expect(m.rename(admin.id, "Pascal", admin)).toMatchObject({ name: "Pascal" });
+    const details = store.listAudit(10).map((r) => r.detail);
+    expect(details.filter((d) => d?.startsWith("renamed"))).toEqual(["renamed Pascal's iPhone to Pascal", "renamed B to Bee", "renamed A to Margo"]);
+  });
+
   it("last_seen_at is written at most once per minute", () => {
     const { m, store, tick } = setup();
     const admin = m.authenticate("admin-token-aaa")!;
