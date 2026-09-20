@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
-export type AuditKind = "command" | "alert" | "hold" | "webhook" | "auto-action" | "mock";
+export type AuditKind = "command" | "alert" | "hold" | "webhook" | "auto-action" | "mock" | "member";
 export type AuditOutcome = "ok" | "noop" | "failed" | "rejected" | "notified" | "undone";
 
 export interface AuditEntry {
@@ -10,6 +10,8 @@ export interface AuditEntry {
   at: string;
   kind: AuditKind;
   source: string;
+  /** Name of the phone whose token issued the action, when known. */
+  member?: string;
   command?: string;
   from?: string;
   to?: string;
@@ -45,9 +47,27 @@ export class Store {
       );
       CREATE INDEX IF NOT EXISTS audit_at ON audit(at);
       CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS members (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        last_seen_at TEXT,
+        revoked_at TEXT
+      );
+      CREATE TABLE IF NOT EXISTS invites (
+        code_hash TEXT PRIMARY KEY,
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        expires_at INTEGER NOT NULL,
+        claimed_at TEXT
+      );
     `);
+    const cols = (this.db.pragma("table_info(audit)") as { name: string }[]).map((c) => c.name);
+    if (!cols.includes("member")) this.db.exec("ALTER TABLE audit ADD COLUMN member TEXT");
     this.insertAudit = this.db.prepare(
-      "INSERT INTO audit (at, kind, source, command, from_state, to_state, outcome, detail) VALUES (@at, @kind, @source, @command, @from, @to, @outcome, @detail)",
+      "INSERT INTO audit (at, kind, source, member, command, from_state, to_state, outcome, detail) VALUES (@at, @kind, @source, @member, @command, @from, @to, @outcome, @detail)",
     );
     this.updateAudit = this.db.prepare("UPDATE audit SET to_state = COALESCE(@to, to_state), outcome = @outcome, detail = COALESCE(@detail, detail) WHERE id = @id");
     this.getKv = this.db.prepare("SELECT value FROM kv WHERE key = ?");
@@ -60,6 +80,7 @@ export class Store {
       at: input.at ?? new Date().toISOString(),
       kind: input.kind,
       source: input.source,
+      member: input.member ?? null,
       command: input.command ?? null,
       from: input.from ?? null,
       to: input.to ?? null,
@@ -81,6 +102,7 @@ export class Store {
     ) as Record<string, unknown>[];
     return rows.map((r) => {
       const e: AuditEntry = { id: r.id as number, at: r.at as string, kind: r.kind as AuditKind, source: r.source as string, outcome: r.outcome as AuditOutcome };
+      if (r.member) e.member = r.member as string;
       if (r.command) e.command = r.command as string;
       if (r.from_state) e.from = r.from_state as string;
       if (r.to_state) e.to = r.to_state as string;

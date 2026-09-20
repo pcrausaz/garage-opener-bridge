@@ -30,23 +30,23 @@ export class HoldService {
     return this.stored() !== null;
   }
 
-  set(minutes: number, source = "app"): Hold {
+  set(minutes: number, source = "app", member?: string): Hold {
     const setAt = this.now();
     this.store.set("hold", { until: setAt + minutes * 60_000, minutes, setAt } satisfies StoredHold);
-    this.store.audit({ kind: "hold", source, outcome: "ok", detail: `${minutes} min` });
+    this.store.audit({ kind: "hold", source, member, outcome: "ok", detail: `${minutes} min` });
     const h = this.get();
     this.bus.emit("hold", h);
     this.arm();
     return h;
   }
 
-  clear(source = "app"): void {
+  clear(source = "app", member?: string): void {
     const had = this.stored();
     this.store.delete("hold");
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     if (had) {
-      this.store.audit({ kind: "hold", source, outcome: "ok", detail: "cleared" });
+      this.store.audit({ kind: "hold", source, member, outcome: "ok", detail: "cleared" });
       this.bus.emit("hold", { active: false });
     }
   }

@@ -133,6 +133,44 @@ describe("mock-mode e2e", () => {
     expect(await expired.json()).toMatchObject({ error: "undo_expired" });
   });
 
+  it("family flow: invite → claim → member drives the door (audited by name) → 403 on invites → admin lists → revoke → 401", async () => {
+    const admin = "test-token-1";
+    await call("/v1/mock/reset", { method: "POST" }, admin);
+    const inv = (await (await call("/v1/invites", { method: "POST" }, admin)).json()) as { code: string; joinUrl: string; bridgeUrl: string };
+    expect(inv.bridgeUrl).toBe(base); // request origin fallback
+    expect(inv.joinUrl).toContain(`&c=${inv.code}`);
+    const claimRes = await fetch(`${base}/v1/invites/${inv.code}/claim`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ deviceName: "Margo's iPhone" }) });
+    expect(claimRes.status).toBe(200);
+    const claim = (await claimRes.json()) as { token: string; member: { id: string; name: string } };
+    expect(claim.token.startsWith("demo-")).toBe(true);
+
+    // member shares the admin's instance and can operate the door
+    expect((await call("/v1/state", {}, claim.token)).status).toBe(200);
+    const open = (await (await call("/v1/door/open?source=app", { method: "POST" }, claim.token)).json()) as { ok: boolean; to: string };
+    expect(open).toMatchObject({ ok: true, to: "OPEN" });
+    expect(((await (await call("/v1/state", {}, admin)).json()) as { door: string }).door).toBe("OPEN");
+    const audit = (await (await call("/v1/audit?limit=1", {}, admin)).json()) as { entries: { kind: string; source: string; member?: string }[] };
+    expect(audit.entries[0]).toMatchObject({ kind: "command", source: "app", member: "Margo's iPhone" });
+
+    expect((await call("/v1/invites", { method: "POST" }, claim.token)).status).toBe(403);
+    const members = (await (await call("/v1/members", {}, admin)).json()) as { members: { id: string; name: string; kind: string; isCurrent: boolean }[] };
+    expect(members.members.find((m) => m.id === claim.member.id)).toMatchObject({ name: "Margo's iPhone", kind: "member", isCurrent: false });
+    expect(members.members.find((m) => m.isCurrent)?.kind).toBe("admin");
+
+    expect((await call(`/v1/members/${claim.member.id}`, { method: "DELETE" }, admin)).status).toBe(204);
+    expect((await call("/v1/state", {}, claim.token)).status).toBe(401);
+    expect((await fetch(`${base}/v1/invites/${inv.code}/claim`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ deviceName: "second" }) })).status).toBe(404);
+  });
+
+  it("expired invite code → 404", async () => {
+    const admin = "test-token-1";
+    const inv = (await (await call("/v1/invites", { method: "POST" }, admin)).json()) as { code: string };
+    const inst = await registry.get(admin);
+    inst.store.db.prepare("UPDATE invites SET expires_at = ?").run(Date.now() - 1);
+    const r = await fetch(`${base}/v1/invites/${inv.code}/claim`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ deviceName: "late" }) });
+    expect(r.status).toBe(404);
+  });
+
   it("idle mock instances expire", async () => {
     await call("/v1/state", {}, "demo-expire");
     const before = registry.size();

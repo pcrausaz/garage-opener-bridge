@@ -4,6 +4,7 @@ import { Instance, startWithRetry } from "./instance.js";
 import { MockRegistry } from "./mock/registry.js";
 import { buildServer } from "./http/server.js";
 import { VERSION } from "./version.js";
+import { installId, startBonjour } from "./bonjour.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -23,9 +24,20 @@ async function main(): Promise<void> {
   logger.info({ host: config.host, port: config.port }, "listening");
   // Live mode: discovery/console problems must not take the port down; /healthz reports ready:false meanwhile.
   if (instance) void startWithRetry(instance, logger, { stopped: () => stopping });
+  const bonjourOn = config.bonjour ?? config.bridge.mode === "live";
+  let stopBonjour: (() => Promise<void>) | null = null;
+  if (bonjourOn) {
+    const id = instance ? installId(instance.store) : "mock";
+    try {
+      stopBonjour = startBonjour({ port: config.port, version: VERSION, mode: config.bridge.mode, id, logger });
+    } catch (err) {
+      logger.warn({ err }, "bonjour unavailable (needs host networking under Docker)");
+    }
+  }
   const shutdown = async (signal: string) => {
     stopping = true;
     logger.info({ signal }, "shutting down");
+    await stopBonjour?.();
     await app.close();
     await instance?.stop();
     await registry?.stop();

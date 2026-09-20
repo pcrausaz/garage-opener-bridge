@@ -26,12 +26,7 @@ describe("bridge HTTP API matches packages/contract/bridge.openapi.yaml", () => 
   it("documents every implemented route and vice-versa", () => {
     const documented = new Set<string>();
     for (const [path, ops] of Object.entries(v.doc.paths)) for (const m of Object.keys(ops)) if (m !== "parameters") documented.add(`${m.toUpperCase()} ${path.replace(/\{(\w+)\}/g, ":$1")}`);
-    const implemented = new Set<string>();
-    for (const line of app.printRoutes({ commonPrefix: false }).split("\n")) {
-      const m = line.match(/^\s*(?:[│├└─\s]*)(\S+)\s+\((\w+(?:,\s*\w+)*)\)/);
-      if (!m) continue;
-      for (const method of m[2]!.split(/,\s*/)) if (method !== "HEAD") implemented.add(`${method} ${m[1]}`);
-    }
+    const implemented = app.routeList;
     for (const d of documented) expect(implemented, `missing implementation for ${d}`).toContain(d);
     for (const i of implemented) expect(documented, `undocumented route ${i}`).toContain(i);
   });
@@ -134,6 +129,48 @@ describe("bridge HTTP API matches packages/contract/bridge.openapi.yaml", () => 
     expect(gone.json()).toMatchObject({ error: "undo_expired" });
     expect(v.validate("Error", gone.json())).toEqual({ ok: true });
     expect((await app.inject({ method: "POST", url: "/v1/auto-actions/nope/undo" })).statusCode).toBe(401);
+  });
+
+  it("family routes → Invite / InviteClaim / Member[] / 204, with 401/403/404/429", async () => {
+    const admin = { authorization: "Bearer test-token-1" };
+    expect((await app.inject({ method: "POST", url: "/v1/invites" })).statusCode).toBe(401);
+    const inv = await app.inject({ method: "POST", url: "/v1/invites", headers: admin, payload: { publicUrl: "http://bridge.local:8787/" } });
+    expect(inv.statusCode).toBe(201);
+    expect(v.validate("Invite", inv.json())).toEqual({ ok: true });
+    expect(inv.json().joinUrl).toBe(`garageopener://join?v=1&b=${encodeURIComponent("http://bridge.local:8787")}&c=${inv.json().code}`);
+    expect(inv.json().bridgeUrl).toBe("http://bridge.local:8787");
+
+    const bad = await app.inject({ method: "POST", url: `/v1/invites/${inv.json().code}/claim`, payload: {} });
+    expect(bad.statusCode).toBe(400);
+    expect(v.validate("Error", bad.json())).toEqual({ ok: true });
+    const claim = await app.inject({ method: "POST", url: `/v1/invites/${inv.json().code}/claim`, payload: { deviceName: "Contract Phone" } });
+    expect(claim.statusCode).toBe(200);
+    expect(v.validate("InviteClaim", claim.json())).toEqual({ ok: true });
+    expect(claim.json().token).toMatch(/^demo-/);
+    expect(claim.json().mapping).toMatchObject({ outputId: 0 });
+    expect((await app.inject({ method: "POST", url: `/v1/invites/${inv.json().code}/claim`, payload: { deviceName: "Again" } })).statusCode).toBe(404);
+    const memberAuth = { authorization: `Bearer ${claim.json().token}` };
+    const forbidden = await app.inject({ method: "POST", url: "/v1/invites", headers: memberAuth });
+    expect(forbidden.statusCode).toBe(403);
+    expect(v.validate("Error", forbidden.json())).toEqual({ ok: true });
+
+    const list = await app.inject({ method: "GET", url: "/v1/members", headers: admin });
+    expect(list.statusCode).toBe(200);
+    for (const m of list.json().members) expect(v.validate("Member", m)).toEqual({ ok: true });
+    expect(list.json().members.map((m: { kind: string; isCurrent: boolean }) => [m.kind, m.isCurrent])).toEqual([["admin", true], ["member", false]]);
+    const mine = await app.inject({ method: "GET", url: "/v1/members", headers: memberAuth });
+    expect(mine.json().members).toHaveLength(1);
+    expect(mine.json().members[0]).toMatchObject({ name: "Contract Phone", isCurrent: true });
+
+    const id = claim.json().member.id;
+    expect((await app.inject({ method: "DELETE", url: "/v1/members/mem_nope", headers: admin })).statusCode).toBe(404);
+    expect((await app.inject({ method: "DELETE", url: `/v1/members/${list.json().members[0].id}`, headers: memberAuth })).statusCode).toBe(403);
+    expect((await app.inject({ method: "DELETE", url: `/v1/members/${id}`, headers: admin })).statusCode).toBe(204);
+    expect((await app.inject({ method: "GET", url: "/v1/state", headers: memberAuth })).statusCode).toBe(401);
+
+    let last = 0;
+    for (let i = 0; i < 7; i++) last = (await app.inject({ method: "POST", url: "/v1/invites/NOPENOPENOPENOPE/claim", payload: { deviceName: "x" }, remoteAddress: "10.9.9.9" })).statusCode;
+    expect(last).toBe(429);
   });
 
   it("webhook: 204 with the right secret (POST and GET), 404 otherwise", async () => {

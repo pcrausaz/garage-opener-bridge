@@ -29,7 +29,8 @@ Environment variables (or the same keys nested in `CONFIG_FILE` YAML; env wins):
 | `BRIDGE_MODE` | `live` | `live` \| `mock` |
 | `PROTECT_URL`, `PROTECT_API_KEY` | — | required in live mode (Protect → Integrations → API key) |
 | `PROTECT_TLS` | `insecure` | `insecure` \| `fingerprint:<sha256>` \| `system` |
-| `BRIDGE_TOKENS` | — | comma-separated bearer tokens (≥ 8 chars); required in live mode |
+| `BRIDGE_TOKENS` / `BRIDGE_TOKEN_NAMES` | — | comma-separated **admin** tokens (≥ 8 chars) and optional names; required in live mode. Family phones get member tokens via invites |
+| `BONJOUR` | live `true` / mock `false` | advertise `_garage-opener._tcp` (TXT version, mode, path, id); needs `network_mode: host` under Docker |
 | `WEBHOOK_SECRET` | — | ≥ 16 chars; Alarm Manager URL is `…/v1/webhooks/alarm-manager/<secret>` |
 | `MOCK_TOKEN_PREFIX` | `demo-` | mock mode also accepts any token with this prefix (isolated state per token, 60 min idle expiry) |
 | `DOOR_RELAY_ID`, `DOOR_OUTPUT_ID`, `DOOR_SENSOR_ID` | auto | auto-paired when exactly one pulse output + one garage sensor exist; else required |
@@ -61,6 +62,7 @@ Spec: `packages/contract/bridge.openapi.yaml` (the server validates bodies with 
 | `GET /v1/events` | SSE: `state`, `command`, `alert`, `hold`, `vehicle`, `heartbeat` (token via header or `?token=`) |
 | `GET /v1/audit?limit&before` | newest-first audit log |
 | `GET /v1/discovery` | relays / sensors / cameras + suggested and current mapping |
+| `POST /v1/invites` (admin) · `POST /v1/invites/{code}/claim` (no auth, 5/min/IP) · `GET /v1/members` · `DELETE /v1/members/{id}` | family onboarding: one-time 15 min invite codes → per-phone member tokens (SHA-256 at rest); audit rows carry the member name |
 | `POST|GET /v1/webhooks/alarm-manager/{secret}` | Alarm Manager target; thumbnails discarded; wrong secret → 404 |
 | `POST /v1/mock/{vehicle-arrived,vehicle-left,plate-seen,reverse-next-close,reset}` | simulator controls (mock only) |
 

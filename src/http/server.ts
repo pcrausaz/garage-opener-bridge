@@ -11,6 +11,7 @@ import { ContractValidator } from "./validation.js";
 import { attachSse } from "./sse.js";
 import { classifyAlarmPayload, stripThumbnails } from "../webhooks/classify.js";
 import type { ApiError, DoorCommand } from "../types.js";
+import type { MemberIdentity } from "../members.js";
 
 export interface ServerOptions {
   config: Config;
@@ -26,9 +27,13 @@ declare module "fastify" {
   interface FastifyRequest {
     token?: string;
     inst?: Instance;
+    member?: MemberIdentity;
   }
   interface FastifyContextConfig {
     operationId?: string;
+  }
+  interface FastifyInstance {
+    routeList: Set<string>;
   }
 }
 
@@ -37,6 +42,8 @@ const RESPONSE_SCHEMAS: Record<string, string> = {
   getState: "State",
   getDiscovery: "Discovery",
   setHold: "Hold",
+  createInvite: "Invite",
+  claimInvite: "InviteClaim",
   mockAction: "State",
 };
 
@@ -66,6 +73,12 @@ export async function buildServer(o: ServerOptions) {
   const httpLog = o.logger.child({ component: "http" });
   if (config.logLevel !== "debug" && config.logLevel !== "trace") httpLog.level = "warn"; // request logging only at debug
   const app = Fastify({ loggerInstance: httpLog, bodyLimit: 1_048_576 });
+  // "METHOD /path" for every registered route (contract tests diff this against the OpenAPI).
+  const routeList = new Set<string>();
+  app.decorate("routeList", routeList);
+  app.addHook("onRoute", (r) => {
+    for (const m of Array.isArray(r.method) ? r.method : [r.method]) if (m !== "HEAD") routeList.add(`${m} ${r.url}`);
+  });
 
   app.removeContentTypeParser("application/json");
   app.addContentTypeParser("application/json", { parseAs: "string" }, (_req, body, done) => {
@@ -94,21 +107,26 @@ export async function buildServer(o: ServerOptions) {
     return typeof q === "string" && req.url.startsWith("/v1/events") ? q : undefined;
   };
 
-  const accepts = (token: string): boolean => {
-    if (config.bridge.tokens.some((t) => safeEq(t, token))) return true;
-    return mode === "mock" && token.startsWith(config.bridge.mockTokenPrefix) && token.length >= config.bridge.mockTokenPrefix.length + 1;
-  };
+  const isDemoToken = (token: string): boolean =>
+    mode === "mock" && token.startsWith(config.bridge.mockTokenPrefix) && token.length >= config.bridge.mockTokenPrefix.length + 1;
+  const unauthenticated = (url: string) => !url.startsWith("/v1/") || url.startsWith("/v1/webhooks/") || /^\/v1\/invites\/[^/]+\/claim(\?|$)/.test(url);
 
   app.addHook("onRequest", async (req, reply) => {
-    if (!req.url.startsWith("/v1/") || req.url.startsWith("/v1/webhooks/")) return;
+    if (unauthenticated(req.url)) return;
     const token = tokenOf(req);
-    if (!token || !accepts(token)) return err(reply, 401, "unauthorized", "missing or invalid bearer token");
+    if (!token) return err(reply, 401, "unauthorized", "missing or invalid bearer token");
+    let inst: Instance;
+    if (o.registry) {
+      if (!config.bridge.tokens.some((t) => safeEq(t, token)) && !isDemoToken(token)) return err(reply, 401, "unauthorized", "missing or invalid bearer token");
+      inst = await o.registry.get(token);
+    } else inst = o.instance!;
+    const member = inst.members.authenticate(token) ?? (isDemoToken(token) && !inst.members.isRevoked(token) ? { id: "demo", name: "Demo", kind: "admin" as const } : null);
+    if (!member) return err(reply, 401, "unauthorized", "missing or invalid bearer token");
+    if (member.id !== "demo") inst.members.touch(member.id);
     req.token = token;
-    if (o.registry) req.inst = await o.registry.get(token);
-    else {
-      if (!o.instance!.ready && !req.url.startsWith("/v1/audit")) return notReady(reply, o.instance!);
-      req.inst = o.instance!;
-    }
+    req.member = member;
+    if (!o.registry && !inst.ready && !req.url.startsWith("/v1/audit")) return notReady(reply, inst);
+    req.inst = inst;
   });
 
   if (validateResponses) {
@@ -142,7 +160,7 @@ export async function buildServer(o: ServerOptions) {
       async (req, reply) => {
         const wait = req.query.wait === undefined ? true : !/^(false|0|no)$/i.test(req.query.wait);
         const source = (req.query.source ?? "api").slice(0, 32);
-        const result = await req.inst!.door[command]({ source, wait });
+        const result = await req.inst!.door[command]({ source, wait, member: req.member?.name });
         if ("accepted" in result) {
           if (validateResponses) validator.assert("CommandAccepted", result);
           return reply.code(202).send(result);
@@ -166,10 +184,10 @@ export async function buildServer(o: ServerOptions) {
   app.post<{ Body: { minutes?: unknown } }>("/v1/hold", { config: { operationId: "setHold" } }, async (req, reply) => {
     const r = validator.validate("HoldRequest", req.body);
     if (!r.ok) return err(reply, 400, "validation", r.errors);
-    return req.inst!.hold.set(req.body.minutes as number, req.token && config.bridge.tokens.includes(req.token) ? "app" : "app");
+    return req.inst!.hold.set(req.body.minutes as number, "app", req.member?.name);
   });
   app.delete("/v1/hold", { config: { operationId: "clearHold" } }, async (req, reply) => {
-    req.inst!.hold.clear("app");
+    req.inst!.hold.clear("app", req.member?.name);
     return reply.code(204).send();
   });
 
@@ -212,6 +230,56 @@ export async function buildServer(o: ServerOptions) {
     } catch {
       done(null, undefined);
     }
+  });
+
+  const requestOrigin = (req: FastifyRequest) => `${req.protocol}://${req.headers.host ?? `localhost:${config.port}`}`;
+
+  app.post<{ Body: { publicUrl?: string } | undefined }>("/v1/invites", { config: { operationId: "createInvite", rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req, reply) => {
+    if (req.member!.kind !== "admin") return err(reply, 403, "forbidden", "an admin token is required to create invites");
+    const bridgeUrl = (req.body?.publicUrl ?? config.publicUrl ?? requestOrigin(req)).replace(/\/+$/, "");
+    const inv = req.inst!.members.createInvite(req.member!.id);
+    req.inst!.store.audit({ kind: "member", source: "admin", member: req.member!.name, outcome: "ok", detail: "invite created" });
+    return reply.code(201).send({ code: inv.code, expiresAt: inv.expiresAt, bridgeUrl, joinUrl: `garageopener://join?v=1&b=${encodeURIComponent(bridgeUrl)}&c=${inv.code}` });
+  });
+
+  app.post<{ Params: { code: string }; Body: { deviceName?: unknown } | undefined }>(
+    "/v1/invites/:code/claim",
+    { config: { operationId: "claimInvite", rateLimit: { max: 5, timeWindow: "1 minute", keyGenerator: (req) => req.ip } } },
+    async (req, reply) => {
+      const name = req.body?.deviceName;
+      if (typeof name !== "string" || name.trim().length < 1 || name.length > 48) return err(reply, 400, "validation", "deviceName (1-48 chars) is required");
+      let inst: Instance | undefined;
+      let ownerToken: string | undefined;
+      if (o.registry) {
+        const found = await o.registry.findByInvite(req.params.code);
+        inst = found?.inst;
+        ownerToken = found?.token;
+      } else inst = o.instance;
+      if (!inst) return err(reply, 404, "not_found", "unknown, expired or already claimed code");
+      const claimed = inst.members.claim(req.params.code, name, o.registry ? config.bridge.mockTokenPrefix : "");
+      if (!claimed) return err(reply, 404, "not_found", "unknown, expired or already claimed code");
+      if (o.registry && ownerToken) o.registry.alias(claimed.token, ownerToken);
+      const mapping = inst.ready ? inst.door.mapping : undefined;
+      const bridge: { version: string; mode: "live" | "mock"; publicUrl?: string } = { version: (await import("../version.js")).VERSION, mode };
+      if (config.publicUrl) bridge.publicUrl = config.publicUrl;
+      return { token: claimed.token, member: claimed.member, bridge, ...(mapping ? { mapping } : {}) };
+    },
+  );
+
+  app.get("/v1/members", { config: { operationId: "listMembers" } }, async (req) => {
+    const me = req.member!;
+    const all = req.inst!.members.list();
+    const visible = me.kind === "admin" ? all : all.filter((m) => m.id === me.id);
+    const members = visible.map((m) => ({ ...m, isCurrent: m.id === me.id }));
+    if (validateResponses) for (const m of members) validator.assert("Member", m);
+    return { members };
+  });
+
+  app.delete<{ Params: { id: string } }>("/v1/members/:id", { config: { operationId: "revokeMember" } }, async (req, reply) => {
+    const r = req.inst!.members.revoke(req.params.id, req.member!);
+    if (r === "not_found") return err(reply, 404, "not_found", "unknown member");
+    if (r === "forbidden") return err(reply, 403, "forbidden", "admin token required, or revoke your own token");
+    return reply.code(204).send();
   });
 
   app.post<{ Params: { action: string }; Body: { plate?: string } | undefined }>("/v1/mock/:action", { config: { operationId: "mockAction" } }, async (req, reply) => {

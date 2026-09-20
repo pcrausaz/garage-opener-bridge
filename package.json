@@ -1,9 +1,11 @@
 {
   "name": "@garage-opener/bridge",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -19,6 +21,7 @@
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "better-sqlite3": "^12.4.1",
+    "bonjour-service": "^1.4.4",
     "fastify": "^5.6.1",
     "pino": "^10.0.0",
     "undici": "^7.16.0",

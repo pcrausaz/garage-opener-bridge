@@ -18,6 +18,7 @@ import { OutboundWebhook } from "./notify/webhook.js";
 import type { NotificationTransport } from "./notify/transport.js";
 import { deviceMatches, type ClassifiedEvent } from "./webhooks/classify.js";
 import { VERSION } from "./version.js";
+import { MembersService } from "./members.js";
 import { iso, type Health, type State } from "./types.js";
 
 /** One fully wired bridge: live mode has exactly one; mock mode has one per bearer token. */
@@ -30,6 +31,7 @@ export class Instance {
   readonly vehicle: VehicleTracker;
   readonly notifier: Notifier;
   readonly webhook: OutboundWebhook | null;
+  readonly members: MembersService;
   door!: DoorService;
   alerts!: AlertEngine;
   lpr: LprEngine | null = null;
@@ -61,6 +63,8 @@ export class Instance {
         opts.protect ?? new HttpProtectClient({ baseUrl: config.protect.url!, apiKey: config.protect.apiKey!, tls: config.protect.tls, logger });
       this.store = new Store(opts.storeFile ?? join(config.dataDir, "bridge.db"));
     }
+    this.members = new MembersService(this.store);
+    this.members.ensureAdmins(config.bridge.tokens, config.bridge.tokenNames);
     this.hold = new HoldService(this.store, this.bus);
     this.vehicle = new VehicleTracker(this.bus, config.alerts.vehicleGraceSeconds * 1000, mode === "mock" ? "mock" : "camera-heuristic");
     const transports: NotificationTransport[] = opts.transports ? [...opts.transports] : [];

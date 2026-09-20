@@ -16,6 +16,8 @@ export const ConfigSchema = z.object({
   publicUrl: z.string().url().optional(),
   dataDir: z.string().default("./data"),
   validateResponses: bool.default(false),
+  /** mDNS advertising; defaults to true in live mode, false in mock. */
+  bonjour: bool.optional(),
   protect: z
     .object({
       url: z.string().url().optional(),
@@ -32,6 +34,7 @@ export const ConfigSchema = z.object({
   bridge: z
     .object({
       tokens: list.default([]),
+      tokenNames: list.default([]),
       mode: z.enum(["live", "mock"]).default("live"),
       webhookSecret: z.string().min(16).optional(),
       mockTokenPrefix: z.string().default("demo-"),
@@ -83,6 +86,8 @@ export const ENV_MAP: Record<string, string> = {
   PROTECT_API_KEY: "protect.apiKey",
   PROTECT_TLS: "protect.tls",
   BRIDGE_TOKENS: "bridge.tokens",
+  BRIDGE_TOKEN_NAMES: "bridge.tokenNames",
+  BONJOUR: "bonjour",
   BRIDGE_MODE: "bridge.mode",
   WEBHOOK_SECRET: "bridge.webhookSecret",
   MOCK_TOKEN_PREFIX: "bridge.mockTokenPrefix",

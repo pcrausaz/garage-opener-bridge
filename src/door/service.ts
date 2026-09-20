@@ -29,6 +29,8 @@ export interface DoorSnapshot {
 export interface CommandOptions {
   source: string;
   wait?: boolean;
+  /** Display name of the phone whose token issued the command (audit). */
+  member?: string;
 }
 
 /** Interface kept minimal so a HomeKit (hap-nodejs) adapter can sit on top in v2. */
@@ -236,12 +238,12 @@ export class LiveDoorService implements DoorService {
     const check = this.busy ? ({ ok: false, reason: "busy" } as const) : canCommand(this.state, command);
     if (!check.ok) {
       const outcome = check.reason === "busy" ? "rejected" : "failed";
-      this.d.store.audit({ kind: "command", source: opts.source, command, from, outcome, detail: check.reason });
+      this.d.store.audit({ kind: "command", source: opts.source, member: opts.member, command, from, outcome, detail: check.reason });
       if (check.reason === "busy") throw new DoorBusyError("door is moving");
       throw new DoorUnknownError("door state unknown (console unreachable)");
     }
     if (check.noop) {
-      const auditId = this.d.store.audit({ kind: "command", source: opts.source, command, from, to: from, outcome: "noop" });
+      const auditId = this.d.store.audit({ kind: "command", source: opts.source, member: opts.member, command, from, to: from, outcome: "noop" });
       const result: CommandResult = { ok: true, command, from, to: from, pulsed: false, verified: true, auditId, startedAt: iso(startedAt), finishedAt: iso(this.now()) };
       this.d.bus.emit("command", result);
       return result;
@@ -250,14 +252,14 @@ export class LiveDoorService implements DoorService {
     // Emulated mode: the press sequence starts by releasing it, so the command proceeds.
     if (this.stuck.isStuck() && this.d.config.relay.pulseMode === "native") {
       const auditId = this.d.store.audit({
-        kind: "command", source: opts.source, command, from, to: from, outcome: "failed",
+        kind: "command", source: opts.source, member: opts.member, command, from, to: from, outcome: "failed",
         detail: "relay_output_stuck: output held on after activate; set RELAY_PULSE_MODE=emulated",
       });
       const result: CommandResult = { ok: false, command, from, to: from, pulsed: false, verified: false, auditId, startedAt: iso(startedAt), finishedAt: iso(this.now()), error: "relay_output_stuck" };
       this.d.bus.emit("command", result);
       return result;
     }
-    const auditId = this.d.store.audit({ kind: "command", source: opts.source, command, from, outcome: "ok", detail: "pulsing" });
+    const auditId = this.d.store.audit({ kind: "command", source: opts.source, member: opts.member, command, from, outcome: "ok", detail: "pulsing" });
     const travelMs = (this.d.config.door.travelSeconds + this.d.config.door.verifyAfterSeconds) * 1000;
     this.busy = true;
     try {
