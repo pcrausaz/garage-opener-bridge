@@ -25,6 +25,8 @@ tags:
     description: Console discovery and door mapping
   - name: webhooks
     description: Alarm Manager inbound
+  - name: family
+    description: Invites and member tokens for other phones
   - name: mock
     description: Simulator control (mock mode)
   - name: system
@@ -231,6 +233,92 @@ paths:
       responses:
         "204": { description: "Accepted" }
         "404": { description: "Unknown secret" }
+  /v1/invites:
+    post:
+      tags: [family]
+      operationId: createInvite
+      summary: Create a one-time invite code for another phone (admin token only)
+      description: |
+        The code is valid for 15 minutes and can be claimed once. `joinUrl` is a `garageopener://join` link carrying the
+        bridge address and the code; show it as a QR or share it. Member tokens cannot create invites.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                publicUrl: { type: string, format: uri, description: Address the invitee should use (defaults to PUBLIC_URL or the request origin) }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Invite" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /v1/invites/{code}/claim:
+    post:
+      tags: [family]
+      operationId: claimInvite
+      summary: Redeem an invite code for a named member token (no auth)
+      security: []
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema: { type: string, minLength: 8 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [deviceName]
+              properties:
+                deviceName: { type: string, minLength: 1, maxLength: 48, description: "e.g. Margo's iPhone" }
+      responses:
+        "200":
+          description: Claimed; the code is now consumed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InviteClaim" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { description: "Unknown, expired or already claimed code" }
+        "429": { description: Too many attempts }
+  /v1/members:
+    get:
+      tags: [family]
+      operationId: listMembers
+      summary: Phones that hold a member token
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [members]
+                properties:
+                  members:
+                    type: array
+                    items: { $ref: "#/components/schemas/Member" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/members/{id}:
+    delete:
+      tags: [family]
+      operationId: revokeMember
+      summary: Revoke a member token (admin token only; a member may revoke itself)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Revoked }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Unknown member }
   /v1/mock/{action}:
     post:
       tags: [mock]
@@ -297,6 +385,11 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
     BadRequest:
       description: Validation error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Requires an admin token (one of BRIDGE_TOKENS)
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -458,14 +551,47 @@ components:
             - { $ref: "#/components/schemas/Hold" }
             - { $ref: "#/components/schemas/VehiclePresence" }
             - { type: object, properties: { at: { type: string, format: date-time } } }
+    Invite:
+      type: object
+      required: [code, expiresAt, joinUrl]
+      properties:
+        code: { type: string }
+        expiresAt: { type: string, format: date-time }
+        joinUrl: { type: string, description: "`garageopener://join?v=1&b=<bridge url>&c=<code>`" }
+        bridgeUrl: { type: string, format: uri }
+    InviteClaim:
+      type: object
+      required: [token, member, bridge]
+      properties:
+        token: { type: string, description: Long-lived bearer token for this phone; shown once }
+        member: { $ref: "#/components/schemas/Member" }
+        bridge:
+          type: object
+          required: [version, mode]
+          properties:
+            version: { type: string }
+            mode: { type: string, enum: [live, mock] }
+            publicUrl: { type: string, format: uri }
+        mapping: { $ref: "#/components/schemas/DoorMapping" }
+    Member:
+      type: object
+      required: [id, name, kind, createdAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        kind: { type: string, enum: [admin, member], description: "admin = configured via BRIDGE_TOKENS" }
+        createdAt: { type: string, format: date-time }
+        lastSeenAt: { type: [string, "null"], format: date-time }
+        isCurrent: { type: boolean, description: True for the caller's own token }
     AuditEntry:
       type: object
       required: [id, at, kind, source, outcome]
       properties:
         id: { type: integer }
         at: { type: string, format: date-time }
-        kind: { type: string, enum: [command, alert, hold, webhook, auto-action, mock] }
+        kind: { type: string, enum: [command, alert, hold, webhook, auto-action, mock, member] }
         source: { type: string }
+        member: { type: string, description: "Name of the phone whose token issued the command, when known" }
         command: { type: string }
         from: { $ref: "#/components/schemas/DoorState" }
         to: { $ref: "#/components/schemas/DoorState" }
