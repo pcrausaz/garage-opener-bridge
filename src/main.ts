@@ -29,7 +29,7 @@ async function main(): Promise<void> {
   if (bonjourOn) {
     const id = instance ? installId(instance.store) : "mock";
     try {
-      stopBonjour = startBonjour({ port: config.port, version: VERSION, mode: config.bridge.mode, id, logger });
+      stopBonjour = startBonjour({ port: config.port, version: VERSION, mode: config.bridge.mode, id, logger, ...(config.publicUrl ? { publicUrl: config.publicUrl } : {}) });
     } catch (err) {
       logger.warn({ err }, "bonjour unavailable (needs host networking under Docker)");
     }
