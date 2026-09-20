@@ -12,6 +12,6 @@ pnpm --filter @garage-opener/bridge dev           # live mode, reads ../.env via
 docker build -f bridge/Dockerfile -t garage-opener-bridge:dev .   # from repo root
 ```
 
-Layout: `src/config.ts` (zod, env→path map) · `src/protect/` (types from fixtures, HTTP client with TLS modes + 8 req/s gate, in-memory simulator) · `src/discovery.ts` · `src/door/` (pure state machine + LiveDoorService) · `src/hold.ts` · `src/alerts/` (rules 1–3, vehicle heuristic, nightly schedule) · `src/lpr/` · `src/notify/` (ntfy, HMAC webhook, Notifier) · `src/instance.ts` (composition) · `src/mock/registry.ts` (per-token mock instances) · `src/http/` (Fastify routes, contract validator, SSE).
+Layout: `src/config.ts` (zod, env→path map) · `src/protect/` (types from fixtures, HTTP client with TLS modes + 8 req/s gate, in-memory simulator) · `src/discovery.ts` · `src/door/` (pure state machine + LiveDoorService) · `src/hold.ts` · `src/alerts/` (rules 1–3, vehicle heuristic, nightly schedule) · `src/lpr/` · `src/notify/` (ntfy, HMAC webhook, Notifier) · `src/members.ts` (admin/member tokens, invites) · `src/bonjour.ts` (`_garage-opener._tcp`) · `src/instance.ts` (composition, startWithRetry) · `src/mock/registry.ts` (per-token mock instances) · `src/http/` (Fastify routes, contract validator, SSE).
 
 Rules: never activate the real relay from tests; fixtures in `test/fixtures/protect/` are the type source of truth; `alarm-manager/synthetic-*.json` are guesses until real payloads are captured. Response validation against the OpenAPI runs when `VALIDATE_RESPONSES=1` (on in tests).
