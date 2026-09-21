@@ -15,7 +15,7 @@ describe("LPR rule engine", () => {
   it("known plate + door CLOSED + nobody inside → opens, notifies, undoable", async () => {
     const m = await mockInstance({}, { nativePulse: true });
     inst = m.inst;
-    await inst.mockAction("plate-seen", { plate: "abc-123" });
+    await inst.mockAction("plate-seen", { plate: "demo-123" });
     expect(inst.lpr!.decisions.map((d) => d.rule)).toEqual(["lpr-auto-open"]);
     expect(m.capture.rules()).toEqual(["lpr-auto-open"]);
     expect(m.capture.alerts[0]?.actions).toEqual(["undo"]);
@@ -35,7 +35,7 @@ describe("LPR rule engine", () => {
   it("undo expires after undoSeconds", async () => {
     const m = await mockInstance({}, { nativePulse: true });
     inst = m.inst;
-    await inst.mockAction("plate-seen", { plate: "ABC123" });
+    await inst.mockAction("plate-seen", { plate: "DEMO123" });
     const id = inst.lpr!.pendingUndo()[0]!.id;
     await vi.advanceTimersByTimeAsync(61_000);
     expect(await inst.lpr!.undo(id)).toBeNull();
@@ -44,13 +44,13 @@ describe("LPR rule engine", () => {
   it("acts on edges only: a plate that stays visible never re-triggers", async () => {
     const m = await mockInstance({}, { nativePulse: true });
     inst = m.inst;
-    await inst.mockAction("plate-seen", { plate: "ABC123" });
+    await inst.mockAction("plate-seen", { plate: "DEMO123" });
     await vi.advanceTimersByTimeAsync(12_100);
     // close it manually; the plate is still in view and reported again within the dedupe window
     const c = inst.door.close({ source: "test" });
     await vi.advanceTimersByTimeAsync(12_100);
     await c;
-    await inst.mockAction("plate-seen", { plate: "ABC123" });
+    await inst.mockAction("plate-seen", { plate: "DEMO123" });
     expect(inst.door.snapshot().door).toBe("CLOSED");
     expect(inst.lpr!.decisions).toHaveLength(1);
   });
@@ -62,7 +62,7 @@ describe("LPR rule engine", () => {
     expect(inst.door.snapshot().door).toBe("CLOSED");
     await inst.mockAction("vehicle-arrived");
     await vi.advanceTimersByTimeAsync(2 * MIN);
-    await inst.mockAction("plate-seen", { plate: "ABC123" });
+    await inst.mockAction("plate-seen", { plate: "DEMO123" });
     expect(inst.door.snapshot().door).toBe("CLOSED");
     expect(inst.lpr!.decisions).toHaveLength(0);
   });
@@ -75,7 +75,7 @@ describe("LPR rule engine", () => {
     await vi.advanceTimersByTimeAsync(12_100);
     await o;
     await inst.mockAction("vehicle-left");
-    await inst.mockAction("plate-seen", { plate: "ABC123" });
+    await inst.mockAction("plate-seen", { plate: "DEMO123" });
     await vi.advanceTimersByTimeAsync(2 * MIN + 59_000);
     expect(inst.door.snapshot().door).toBe("OPEN");
     await vi.advanceTimersByTimeAsync(2_000);
@@ -90,7 +90,7 @@ describe("LPR rule engine", () => {
     const o = inst.door.open({ source: "test" });
     await vi.advanceTimersByTimeAsync(12_100);
     await o;
-    await inst.mockAction("plate-seen", { plate: "ABC123" });
+    await inst.mockAction("plate-seen", { plate: "DEMO123" });
     await inst.mockAction("vehicle-left");
     inst.hold.set(30, "test");
     await vi.advanceTimersByTimeAsync(4 * MIN);
@@ -102,6 +102,6 @@ describe("LPR rule engine", () => {
     const off = await mockInstance({ features: { lpr: false } }, { nativePulse: true });
     inst = off.inst;
     expect(inst.lpr).not.toBeNull(); // mock mode always has it for the demo
-    expect(inst.lpr!.isKnown("abc 123")).toBe(true);
+    expect(inst.lpr!.isKnown("demo 123")).toBe(true);
   });
 });

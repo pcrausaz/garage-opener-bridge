@@ -107,15 +107,45 @@ describe("mock-mode e2e", () => {
 
   it("demo LPR: plate-seen opens the door for a known plate", async () => {
     await call("/v1/mock/reset", { method: "POST" }, "demo-lpr");
-    const s = (await (await call("/v1/mock/plate-seen", { method: "POST", body: JSON.stringify({ plate: "abc 123" }) }, "demo-lpr")).json()) as { door: string };
+    const s = (await (await call("/v1/mock/plate-seen", { method: "POST", body: JSON.stringify({ plate: "demo 123" }) }, "demo-lpr")).json()) as { door: string };
     expect(s.door).toBe("OPENING");
     await new Promise((r) => setTimeout(r, 2300));
     expect(((await (await call("/v1/state", {}, "demo-lpr")).json()) as { door: string }).door).toBe("OPEN");
   });
 
+  it("an unknown plate changes nothing (the demo only knows DEMO_PLATE)", async () => {
+    await call("/v1/mock/reset", { method: "POST" }, "demo-unknown");
+    const s = (await (await call("/v1/mock/plate-seen", { method: "POST", body: JSON.stringify({ plate: "ABC123" }) }, "demo-unknown")).json()) as { door: string };
+    expect(s.door).toBe("CLOSED");
+    await new Promise((r) => setTimeout(r, 300));
+    expect(((await (await call("/v1/state", {}, "demo-unknown")).json()) as { door: string }).door).toBe("CLOSED");
+  });
+
+  it("every simulator control is visible in the state or the audit log", async () => {
+    const t = "demo-controls";
+    await call("/v1/mock/reset", { method: "POST" }, t);
+    const arrived = (await (await call("/v1/mock/vehicle-arrived", { method: "POST" }, t)).json()) as { vehicle: { present: boolean } };
+    expect(arrived.vehicle.present).toBe(true);
+    const left = (await (await call("/v1/mock/vehicle-left", { method: "POST" }, t)).json()) as { vehicle: { present: boolean } };
+    expect(left.vehicle.present).toBe(false);
+    // "reverse next close" arms something invisible in the state, so the audit log is its only receipt
+    expect((await call("/v1/mock/reverse-next-close", { method: "POST" }, t)).status).toBe(200);
+    const inst = await registry.get(t);
+    expect(inst.sim!.reverseNextClose).toBe(true);
+    expect(inst.store.listAudit(10).map((e) => e.detail)).toContain("reverse-next-close armed");
+    const reset = (await (await call("/v1/mock/reset", { method: "POST" }, t)).json()) as { door: string; vehicle: { present: boolean } };
+    expect(reset).toMatchObject({ door: "CLOSED", vehicle: { present: false } });
+    expect(inst.sim!.reverseNextClose).toBe(false);
+  });
+
+  it("state carries mode: mock, which is what the app gates its simulator panel on", async () => {
+    const s = (await (await call("/v1/state", {}, "demo-e2e")).json()) as { mode: string };
+    expect(s.mode).toBe("mock");
+  });
+
   it("undo: plate-seen → auto-open → undo → CLOSED; consumed/expired undo → 404", async () => {
     await call("/v1/mock/reset", { method: "POST" }, "demo-undo");
-    await call("/v1/mock/plate-seen", { method: "POST", body: JSON.stringify({ plate: "ABC123" }) }, "demo-undo");
+    await call("/v1/mock/plate-seen", { method: "POST", body: JSON.stringify({ plate: "DEMO123" }) }, "demo-undo");
     const inst = await registry.get("demo-undo");
     const alert = inst.store.listAudit(5).find((e) => e.kind === "alert");
     expect(alert).toBeDefined();

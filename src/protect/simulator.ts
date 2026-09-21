@@ -9,6 +9,13 @@ export const SIM_IDS = {
   drivewayCameraId: "mock-cam-driveway",
 } as const;
 
+/**
+ * The one plate the simulator's LPR rules know when `LPR_KNOWN_PLATES` is unset (mock mode). The app's Simulate
+ * panel offers exactly this plate, and `docs/app-review-notes.md` quotes it: if the three drift apart, "Known
+ * plate seen" silently does nothing on the public demo bridge.
+ */
+export const DEMO_PLATE = "DEMO123";
+
 export interface SimulatorOptions {
   travelMs?: number;
   /** Delay before the tilt sensor flips to "opened" after an opening pulse. */

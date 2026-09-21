@@ -112,7 +112,7 @@ describe("bridge HTTP API matches packages/contract/bridge.openapi.yaml", () => 
   it("POST /v1/auto-actions/{id}/undo → CommandResult / 404 undo_expired", async () => {
     const t = { authorization: "Bearer demo-undo" };
     await app.inject({ method: "POST", url: "/v1/mock/reset", headers: t });
-    const seen = await app.inject({ method: "POST", url: "/v1/mock/plate-seen", headers: t, payload: { plate: "ABC123" } });
+    const seen = await app.inject({ method: "POST", url: "/v1/mock/plate-seen", headers: t, payload: { plate: "DEMO123" } });
     expect(seen.json().door).toBe("OPENING");
     const inst = await registry.get("demo-undo");
     const id = inst.lpr!.pendingUndo()[0]!.id;

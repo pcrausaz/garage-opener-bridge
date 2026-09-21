@@ -3,7 +3,7 @@ import type { Config } from "./config.js";
 import type { Logger } from "./logger.js";
 import type { ProtectClient } from "./protect/types.js";
 import { HttpProtectClient } from "./protect/client.js";
-import { ProtectSimulator, SIM_IDS, type SimulatorOptions } from "./protect/simulator.js";
+import { DEMO_PLATE, ProtectSimulator, SIM_IDS, type SimulatorOptions } from "./protect/simulator.js";
 import { discover, type DiscoveryResult, type DoorMapping } from "./discovery.js";
 import { Store } from "./store/db.js";
 import { Bus } from "./events/bus.js";
@@ -123,7 +123,7 @@ export class Instance {
     if (c.features.lpr || this.mode === "mock") {
       this.lpr = new LprEngine(
         { bus: this.bus, door: this.door, hold: this.hold, notifier: this.notifier, vehicle: this.vehicle, store: this.store, logger: this.log },
-        { knownPlates: this.mode === "mock" && c.lpr.knownPlates.length === 0 ? ["DEMO123"] : c.lpr.knownPlates, departGraceMinutes: c.lpr.departGraceMinutes, undoSeconds: c.lpr.undoSeconds },
+        { knownPlates: this.mode === "mock" && c.lpr.knownPlates.length === 0 ? [DEMO_PLATE] : c.lpr.knownPlates, departGraceMinutes: c.lpr.departGraceMinutes, undoSeconds: c.lpr.undoSeconds },
       );
       this.lpr.start();
     }
