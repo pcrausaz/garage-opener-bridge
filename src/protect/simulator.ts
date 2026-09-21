@@ -46,6 +46,12 @@ export class ProtectSimulator extends EventEmitter implements ProtectClient {
   outputState: "on" | "off" = "off";
   readonly relayBehaviour: "pulse" | "toggle";
   private timer: NodeJS.Timeout | null = null;
+  /**
+   * The tilt edge is tracked separately from the travel because a stop does not put the door back on the
+   * floor: a door halted part-way up is tilted, so the sensor still reports `opened` at its usual lag even
+   * though the travel was cut short. Folding the two together is what hid #5.
+   */
+  private tiltTimer: NodeJS.Timeout | null = null;
   private readonly travelMs: number;
   private readonly tiltMs: number;
   private readonly now: () => number;
@@ -61,7 +67,7 @@ export class ProtectSimulator extends EventEmitter implements ProtectClient {
   }
 
   reset(): void {
-    this.clearTimer();
+    this.clearAllTimers();
     this.phase = "closed";
     this.stoppedFrom = null;
     this.setOpened(false);
@@ -70,9 +76,16 @@ export class ProtectSimulator extends EventEmitter implements ProtectClient {
     this.outputState = "off";
   }
 
+  /** Clears the travel timer only; the pending tilt edge survives a stop (see `tiltTimer`). */
   private clearTimer() {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+  }
+
+  private clearAllTimers() {
+    this.clearTimer();
+    if (this.tiltTimer) clearTimeout(this.tiltTimer);
+    this.tiltTimer = null;
   }
 
   private setOpened(v: boolean) {
@@ -89,13 +102,16 @@ export class ProtectSimulator extends EventEmitter implements ProtectClient {
     switch (this.phase) {
       case "closed":
         this.phase = "opening";
-        this.timer = setTimeout(() => {
+        // The door leaves the floor immediately; the sensor only says so `tiltMs` later, and keeps that
+        // appointment even if the travel is stopped in the meantime.
+        if (!this.tiltTimer) this.tiltTimer = setTimeout(() => {
+          this.tiltTimer = null;
           this.setOpened(true);
-          this.timer = setTimeout(() => {
-            this.phase = "open";
-            this.timer = null;
-          }, Math.max(0, this.travelMs - this.tiltMs));
         }, this.tiltMs);
+        this.timer = setTimeout(() => {
+          this.phase = "open";
+          this.timer = null;
+        }, this.travelMs);
         break;
       case "stopped":
         // A real opener reverses the travel it interrupted: stopped while opening → this press closes;

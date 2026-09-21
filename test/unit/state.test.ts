@@ -123,11 +123,32 @@ describe("door state machine", () => {
       expect(s.since).toBe(T + 3000);
     });
 
-    it("gives up STOPPED when the contact shows the door reached fully closed", () => {
+    it("gives up STOPPED only once the contact has been seen opened first (#5)", () => {
+      // Stopped on the way up before the tilt edge: the contact still reads closed, and that is the
+      // sensor lagging the press, not the door sitting on the floor. It must stay part-way.
       let s = reduce(opening(), { type: "stop", at: T + 3000 });
+      expect(s.sawOpenSinceStop).toBe(false);
       s = reduce(s, { type: "sensor", isOpened: false, at: T + 30000 });
+      expect(s.door).toBe("STOPPED");
+      expect(s.stoppedFrom).toBe("OPENING");
+
+      // The edge arrives: the door is off the floor, still part-way.
+      s = reduce(s, { type: "sensor", isOpened: true, at: T + 40000 });
+      expect(s.door).toBe("STOPPED");
+      expect(s.sawOpenSinceStop).toBe(true);
+
+      // Now a closed contact really does mean it reached the floor.
+      s = reduce(s, { type: "sensor", isOpened: false, at: T + 60000 });
       expect(s.door).toBe("CLOSED");
       expect(s.stoppedFrom).toBeNull();
+    });
+
+    it("a door stopped mid-close is closed by the very next closed contact", () => {
+      // Here the contact already reads opened at the stop, so nothing is being waited for.
+      let s = reduce(closing(), { type: "stop", at: T + 4000 });
+      expect(s.sawOpenSinceStop).toBe(true);
+      s = reduce(s, { type: "sensor", isOpened: false, at: T + 20000 });
+      expect(s.door).toBe("CLOSED");
     });
 
     it("a console outage drops the part-way state rather than guessing", () => {

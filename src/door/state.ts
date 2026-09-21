@@ -19,6 +19,15 @@ export interface DoorMachineState {
    * declare a healthy door STUCK or, worse, let an unattended `close` open it.
    */
   stoppedFrom: "OPENING" | "CLOSING" | null;
+  /**
+   * Whether the contact has read *opened* at any point since the stop (seeded with the reading at the stop
+   * itself). While STOPPED this is what makes a closed contact mean something: the tilt sensor's edge lands
+   * 7–9 s into a ~15 s travel (ARCHITECTURE §5), so a door stopped on the way up is usually still reading
+   * *closed* simply because the sensor has not caught up. Only a closed contact that follows an opened one
+   * is evidence the door actually reached the floor. Without this the machine threw the part-way state — and
+   * `stoppedFrom` with it — one poll after setting it, and the next press drove the door the wrong way (#5).
+   */
+  sawOpenSinceStop: boolean;
 }
 
 export type DoorEvent =
@@ -29,7 +38,7 @@ export type DoorEvent =
   | { type: "deadline"; at: number };
 
 export function initialDoorState(at: number): DoorMachineState {
-  return { door: "UNKNOWN", isOpened: null, since: at, lastChangedAt: null, moving: null, stoppedFrom: null };
+  return { door: "UNKNOWN", isOpened: null, since: at, lastChangedAt: null, moving: null, stoppedFrom: null, sawOpenSinceStop: false };
 }
 
 export function restingState(isOpened: boolean): DoorState {
@@ -61,23 +70,25 @@ export function reduce(s: DoorMachineState, e: DoorEvent): DoorMachineState {
         return { ...s, isOpened: e.isOpened, lastChangedAt };
       }
       if (s.door === "STOPPED") {
-        // The contact only ever leaves "opened" when the door reaches fully closed — someone finished the
-        // travel at the wall button. Anything else keeps the part-way state the sensor cannot see.
-        if (!e.isOpened) return { ...s, door: "CLOSED", isOpened: false, since: e.at, lastChangedAt, stoppedFrom: null };
-        return { ...s, isOpened: e.isOpened, lastChangedAt };
+        // A closed contact retires the part-way state only once the sensor has been seen reading *opened*;
+        // before that it is just the edge lagging the press, not the door sitting on the floor (#5).
+        if (!e.isOpened && s.sawOpenSinceStop) {
+          return { ...s, door: "CLOSED", isOpened: false, since: e.at, lastChangedAt, stoppedFrom: null, sawOpenSinceStop: false };
+        }
+        return { ...s, isOpened: e.isOpened, lastChangedAt, sawOpenSinceStop: s.sawOpenSinceStop || e.isOpened };
       }
       const door = restingState(e.isOpened);
       if (s.isOpened === null || changed || s.door === "UNKNOWN") {
         // First read, external actuation (wall button / remote), or recovery from UNKNOWN.
         const since = s.door === door ? s.since : (changed && s.isOpened !== null ? e.at : (e.changedAt ?? e.at));
-        return { ...s, door, isOpened: e.isOpened, since, lastChangedAt, moving: null, stoppedFrom: null };
+        return { ...s, door, isOpened: e.isOpened, since, lastChangedAt, moving: null, stoppedFrom: null, sawOpenSinceStop: false };
       }
       if (s.door === "STUCK") return s; // unchanged contact while stuck stays stuck
       return { ...s, isOpened: e.isOpened, lastChangedAt };
     }
     case "sensor-error":
       if (s.moving) return s;
-      return s.door === "UNKNOWN" ? s : { ...s, door: "UNKNOWN", since: e.at, moving: null, stoppedFrom: null };
+      return s.door === "UNKNOWN" ? s : { ...s, door: "UNKNOWN", since: e.at, moving: null, stoppedFrom: null, sawOpenSinceStop: false };
     case "pulse": {
       const target = targetFor(e.command, s);
       return {
@@ -86,16 +97,19 @@ export function reduce(s: DoorMachineState, e: DoorEvent): DoorMachineState {
         since: e.at,
         moving: { command: e.command, target, startedAt: e.at, deadline: e.at + e.travelMs },
         stoppedFrom: null,
+        sawOpenSinceStop: false,
       };
     }
     case "stop": {
       if (!s.moving) return s;
-      return { ...s, door: "STOPPED", since: e.at, moving: null, stoppedFrom: s.moving.target === "OPEN" ? "OPENING" : "CLOSING" };
+      // Seed from the contact as it reads right now: true for a door stopped mid-close (or mid-open after the
+      // edge), false for one stopped on the way up before the sensor caught up.
+      return { ...s, door: "STOPPED", since: e.at, moving: null, stoppedFrom: s.moving.target === "OPEN" ? "OPENING" : "CLOSING", sawOpenSinceStop: s.isOpened === true };
     }
     case "deadline": {
       if (!s.moving) return s;
       const reached = s.isOpened !== null && restingState(s.isOpened) === s.moving.target;
-      return { ...s, door: reached ? s.moving.target : "STUCK", since: e.at, moving: null, stoppedFrom: null };
+      return { ...s, door: reached ? s.moving.target : "STUCK", since: e.at, moving: null, stoppedFrom: null, sawOpenSinceStop: false };
     }
   }
 }
