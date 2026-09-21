@@ -4,7 +4,7 @@ import type { ProtectClient, ProtectRelay, ProtectSensor } from "../protect/type
 import type { Store } from "../store/db.js";
 import type { Bus } from "../events/bus.js";
 import type { DoorMapping } from "../discovery.js";
-import { canCommand, initialDoorState, reduce, type DoorMachineState } from "./state.js";
+import { canCommand, initialDoorState, nextPress, reduce, type DoorMachineState, type NextPress } from "./state.js";
 import { StuckOutputDetector } from "./stuck.js";
 import { iso, type CommandAccepted, type CommandResult, type DoorCommand, type DoorState, type State } from "../types.js";
 
@@ -14,9 +14,19 @@ export class DoorBusyError extends Error {
 export class DoorUnknownError extends Error {
   code = "protect_unavailable" as const;
 }
+/** `stop` asked for while the door is not travelling: the same press would move it instead. */
+export class DoorNotMovingError extends Error {
+  code = "door_not_moving" as const;
+}
+/** `open`/`close` asked for from STOPPED in the direction one press does not go. */
+export class DoorDirectionError extends Error {
+  code = "door_direction" as const;
+}
 
 export interface DoorSnapshot {
   door: DoorState;
+  /** What one relay press does from here; omitted while the door state is unknown. */
+  nextPress?: NextPress;
   isOpened: boolean;
   since: string;
   lastChangedAt?: string;
@@ -24,6 +34,15 @@ export interface DoorSnapshot {
   sensor: { id: string; name: string; connected: boolean; isOpened: boolean; openStatusChangedAt?: string; battery: { percentage: number | null; isLow: boolean }; signalQuality: number | null };
   relay: { id: string; outputId: number; name: string; connected: boolean; pulseMode: "native" | "emulated"; pulseDurationMs: number | null; outputStuck: boolean };
   updatedAt: string;
+}
+
+/** A command that has pulsed and is waiting for the sensor re-read that decides its outcome. */
+interface PendingCommand {
+  command: DoorCommand;
+  from: DoorState;
+  startedAt: number;
+  auditId: number;
+  resolve: (r: CommandResult) => void;
 }
 
 export interface CommandOptions {
@@ -41,6 +60,11 @@ export interface DoorService {
   open(opts: CommandOptions): Promise<CommandResult | CommandAccepted>;
   close(opts: CommandOptions): Promise<CommandResult | CommandAccepted>;
   toggle(opts: CommandOptions): Promise<CommandResult | CommandAccepted>;
+  /**
+   * One press while the door is travelling: the opener stops it part-way. Never verified — the tilt sensor
+   * cannot see where the door came to rest — and it cancels the command that was counting down.
+   */
+  stopDoor(opts: CommandOptions): Promise<CommandResult>;
   /** External sensor edge (Alarm Manager webhook). */
   applySensorEvent(isOpened: boolean, at: number): void;
   refresh(): Promise<void>;
@@ -79,8 +103,11 @@ export class LiveDoorService implements DoorService {
   private deadlineTimer: NodeJS.Timeout | null = null;
   private inflight: Promise<CommandResult> | null = null;
   /** The command counting down right now, so `settle()` can answer its caller instead of leaving it hanging. */
-  private pending: { command: DoorCommand; from: DoorState; startedAt: number; auditId: number; resolve: (r: CommandResult) => void } | null = null;
+  private pending: PendingCommand | null = null;
   private busy = false;
+  /** True only while the relay press sequence is being written. `stop` may interrupt a travelling door, but
+   * never a press in progress: two interleaved activate sequences on the same output leave it anywhere. */
+  private pulsing = false;
   private running = false;
   private polling: Promise<void> | null = null;
   private readonly log: Logger;
@@ -125,6 +152,8 @@ export class LiveDoorService implements DoorService {
       },
       updatedAt: iso(this.now()),
     };
+    const press = nextPress(this.state);
+    if (press) snap.nextPress = press;
     if (this.state.lastChangedAt) snap.lastChangedAt = iso(this.state.lastChangedAt);
     if (s?.openStatusChangedAt) snap.sensor.openStatusChangedAt = iso(s.openStatusChangedAt);
     return snap;
@@ -262,15 +291,105 @@ export class LiveDoorService implements DoorService {
     return this.command("toggle", opts);
   }
 
+  /**
+   * One press while the door is travelling. The opener stops the door part-way and reverses on the next
+   * press, so this cancels the command counting down (it resolves with `error: "cancelled"`) and leaves the
+   * machine in STOPPED, remembering which travel was interrupted. Unverifiable by construction: the tilt
+   * sensor reads `isOpened` for a door that is one inch or six feet from closed (ADR-0015).
+   */
+  async stopDoor(opts: CommandOptions): Promise<CommandResult> {
+    const startedAt = this.now();
+    const from = this.state.door;
+    const audit = (outcome: "rejected" | "failed" | "ok", detail: string) =>
+      this.d.store.audit({ kind: "command", source: opts.source, member: opts.member, command: "stop", from, outcome, detail });
+    if (this.pulsing) {
+      audit("rejected", "a relay press is already in progress");
+      throw new DoorBusyError("a press is already in progress");
+    }
+    const check = canCommand(this.state, "stop");
+    if (!check.ok) {
+      audit("rejected", check.reason);
+      throw new DoorNotMovingError("the door is not moving; there is nothing to stop");
+    }
+    // Take the in-flight command off its deadline *before* pressing, so it cannot resolve mid-press and
+    // declare a door OPEN that this press is about to send moving again. Restored if the press fails.
+    const interrupted = this.pending;
+    const remainingMs = Math.max(0, (this.state.moving?.deadline ?? startedAt) - startedAt);
+    if (this.deadlineTimer) clearTimeout(this.deadlineTimer);
+    this.deadlineTimer = null;
+    this.pending = null;
+    const auditId = audit("ok", "pulsing");
+    try {
+      await this.pressRelay();
+    } catch (err) {
+      if (interrupted) this.armVerification(interrupted, remainingMs);
+      this.d.store.auditUpdate(auditId, { outcome: "failed", detail: (err as Error).message });
+      throw new DoorUnknownError(`relay activation failed: ${(err as Error).message}`);
+    }
+    const at = this.now();
+    this.busy = false;
+    this.inflight = null;
+    this.setState(reduce(this.state, { type: "stop", at }));
+    // A stopped door polls on the idle interval, so without this the contact reported alongside STOPPED could
+    // be up to `poll.idleMs` stale. It also catches a stop so early in an opening travel that the door never
+    // left the floor: the sensor still reads closed, and CLOSED is the honest answer (ADR-0002).
+    await this.refresh();
+    const to = this.state.door;
+    this.d.store.auditUpdate(auditId, { to, outcome: "ok", detail: "stopped part-way; the sensor cannot confirm the position" });
+    if (interrupted) {
+      this.d.store.auditUpdate(interrupted.auditId, { to, outcome: "stopped", detail: `stopped by ${opts.source}` });
+      interrupted.resolve({
+        ok: false, command: interrupted.command, from: interrupted.from, to, pulsed: true, verified: false,
+        auditId: interrupted.auditId, startedAt: iso(interrupted.startedAt), finishedAt: iso(at), error: "cancelled",
+      });
+    }
+    const result: CommandResult = { ok: true, command: "stop", from, to, pulsed: true, verified: false, auditId, startedAt: iso(startedAt), finishedAt: iso(at) };
+    this.d.bus.emit("command", result);
+    this.schedulePoll();
+    return result;
+  }
+
+  /** Arms (or re-arms) the sensor re-read that decides a travelling command's outcome. */
+  private armVerification(pending: PendingCommand, inMs: number): void {
+    this.pending = pending;
+    this.busy = true;
+    if (this.deadlineTimer) clearTimeout(this.deadlineTimer);
+    this.deadlineTimer = setTimeout(async () => {
+      this.deadlineTimer = null;
+      this.pending = null;
+      this.busy = false;
+      if (!this.running) return;
+      await Promise.all([this.refresh(), this.refreshRelay()]);
+      if (!this.running) return;
+      const at = this.now();
+      this.setState(reduce(this.state, { type: "deadline", at }));
+      const to = this.state.door;
+      const ok = to !== "STUCK";
+      this.d.store.auditUpdate(pending.auditId, { to, outcome: ok ? "ok" : "failed", detail: ok ? "verified" : "sensor did not confirm" });
+      const result: CommandResult = { ok, command: pending.command, from: pending.from, to, pulsed: true, verified: true, auditId: pending.auditId, startedAt: iso(pending.startedAt), finishedAt: iso(at) };
+      if (!ok) result.error = "verification_failed";
+      this.inflight = null;
+      this.d.bus.emit("command", result);
+      this.schedulePoll();
+      pending.resolve(result);
+    }, inMs);
+    this.deadlineTimer.unref?.();
+  }
+
   private async command(command: DoorCommand, opts: CommandOptions): Promise<CommandResult | CommandAccepted> {
+    if (command === "stop") return this.stopDoor(opts);
     const wait = opts.wait ?? true;
     const startedAt = this.now();
     const from = this.state.door;
-    const check = this.busy ? ({ ok: false, reason: "busy" } as const) : canCommand(this.state, command);
+    const check = this.busy || this.pulsing ? ({ ok: false, reason: "busy" } as const) : canCommand(this.state, command);
     if (!check.ok) {
-      const outcome = check.reason === "busy" ? "rejected" : "failed";
+      const outcome = check.reason === "busy" || check.reason === "direction" ? "rejected" : "failed";
       this.d.store.audit({ kind: "command", source: opts.source, member: opts.member, command, from, outcome, detail: check.reason });
       if (check.reason === "busy") throw new DoorBusyError("door is moving");
+      if (check.reason === "direction") {
+        const press = nextPress(this.state);
+        throw new DoorDirectionError(`the door was stopped part-way; one press ${press === "open" ? "opens" : "closes"} it, so ${command} is not available from here`);
+      }
       throw new DoorUnknownError("door state unknown (console unreachable)");
     }
     if (check.noop) {
@@ -294,7 +413,7 @@ export class LiveDoorService implements DoorService {
     const travelMs = (this.d.config.door.travelSeconds + this.d.config.door.verifyAfterSeconds) * 1000;
     this.busy = true;
     try {
-      await this.pulse();
+      await this.pressRelay();
     } catch (err) {
       this.busy = false;
       this.d.store.auditUpdate(auditId, { outcome: "failed", detail: (err as Error).message });
@@ -304,32 +423,24 @@ export class LiveDoorService implements DoorService {
     this.setState(reduce(this.state, { type: "pulse", command, at: pulsedAt, travelMs }));
     this.schedulePoll();
     const done = new Promise<CommandResult>((resolve) => {
-      this.pending = { command, from, startedAt, auditId, resolve };
-      this.deadlineTimer = setTimeout(async () => {
-        this.deadlineTimer = null;
-        this.pending = null;
-        this.busy = false;
-        if (!this.running) return;
-        await Promise.all([this.refresh(), this.refreshRelay()]);
-        if (!this.running) return;
-        const at = this.now();
-        this.setState(reduce(this.state, { type: "deadline", at }));
-        const to = this.state.door;
-        const ok = to !== "STUCK";
-        this.d.store.auditUpdate(auditId, { to, outcome: ok ? "ok" : "failed", detail: ok ? "verified" : "sensor did not confirm" });
-        const result: CommandResult = { ok, command, from, to, pulsed: true, verified: true, auditId, startedAt: iso(startedAt), finishedAt: iso(at) };
-        if (!ok) result.error = "verification_failed";
-        this.inflight = null;
-        this.d.bus.emit("command", result);
-        this.schedulePoll();
-        resolve(result);
-      }, travelMs);
+      this.armVerification({ command, from, startedAt, auditId, resolve }, travelMs);
     });
     this.inflight = done;
     if (wait) return done;
     const accepted: CommandAccepted = { accepted: true, command, auditId, expectedBy: iso(startedAt + travelMs) };
     return accepted;
   }
+
+  /** `pulse()` behind the in-progress guard `stop` checks, so two press sequences never interleave. */
+  private async pressRelay(): Promise<void> {
+    this.pulsing = true;
+    try {
+      await this.pulse();
+    } finally {
+      this.pulsing = false;
+    }
+  }
+
 
   /**
    * native: one activate (hardware that really pulses).

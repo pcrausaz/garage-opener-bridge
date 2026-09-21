@@ -241,6 +241,70 @@ describe("mock-mode e2e", () => {
     expect(received.map((e) => e.event)).toContain("alert");
   });
 
+  // Own token → own instance, so these are independent of the door state the tests above leave behind.
+  describe("stop part-way (ADR-0015)", () => {
+    const stopCall = (path: string, init: RequestInit = {}) => call(path, init, "demo-e2e-stop");
+    const state = async () => (await (await stopCall("/v1/state")).json()) as { door: string; isOpened: boolean; nextPress?: string };
+
+    it("a press mid-travel stops the door, cancels the open, and is reported unverified", async () => {
+      expect((await stopCall("/v1/mock/reset", { method: "POST" })).status).toBe(200);
+      const opening = stopCall("/v1/door/open?source=e2e", { method: "POST" });
+      await new Promise((r) => setTimeout(r, 400));
+      expect((await state()).door).toBe("OPENING");
+
+      const stopped = await (await stopCall("/v1/door/stop?source=watch", { method: "POST" })).json();
+      expect(stopped).toMatchObject({ ok: true, command: "stop", from: "OPENING", to: "STOPPED", pulsed: true, verified: false });
+
+      // The open that was counting down comes back cancelled rather than hanging or declaring STUCK.
+      expect(await (await opening).json()).toMatchObject({ ok: false, command: "open", to: "STOPPED", error: "cancelled" });
+
+      const s = await state();
+      expect(s.door).toBe("STOPPED");
+      expect(s.isOpened).toBe(true); // the tilt sensor cannot tell part-way from wide open
+      expect(s.nextPress).toBe("close");
+
+      // Polls keep reporting that same "opened" contact; STOPPED has to survive them.
+      await new Promise((r) => setTimeout(r, 1200));
+      expect((await state()).door).toBe("STOPPED");
+
+      const audit = (await (await stopCall("/v1/audit?limit=2")).json()) as { entries: { command: string; outcome: string; to: string }[] };
+      expect(audit.entries).toEqual([
+        expect.objectContaining({ command: "stop", outcome: "ok", to: "STOPPED" }),
+        expect.objectContaining({ command: "open", outcome: "stopped", to: "STOPPED" }),
+      ]);
+    });
+
+    it("from STOPPED one press reverses: close resumes downward and verifies", async () => {
+      expect((await state()).door).toBe("STOPPED");
+      const r = await (await stopCall("/v1/door/close?source=e2e", { method: "POST" })).json();
+      expect(r).toMatchObject({ ok: true, command: "close", from: "STOPPED", to: "CLOSED", verified: true });
+      expect((await state()).door).toBe("CLOSED");
+    });
+
+    it("stopping mid-close refuses a close and offers open instead", async () => {
+      await (await stopCall("/v1/door/open", { method: "POST" })).json();
+      const closing = stopCall("/v1/door/close?wait=false", { method: "POST" });
+      expect((await closing).status).toBe(202);
+      await new Promise((r) => setTimeout(r, 300));
+      expect((await stopCall("/v1/door/stop", { method: "POST" })).status).toBe(200);
+      expect((await state()).nextPress).toBe("open");
+
+      // One press would open it, so `close` is refused rather than silently doing the opposite.
+      const refused = await stopCall("/v1/door/close", { method: "POST" });
+      expect(refused.status).toBe(409);
+      expect(await refused.json()).toMatchObject({ error: "door_direction" });
+
+      const r = await (await stopCall("/v1/door/open", { method: "POST" })).json();
+      expect(r).toMatchObject({ ok: true, command: "open", from: "STOPPED", to: "OPEN" });
+    });
+
+    it("stop is refused when there is nothing to stop", async () => {
+      const r = await stopCall("/v1/door/stop", { method: "POST" });
+      expect(r.status).toBe(409);
+      expect(await r.json()).toMatchObject({ error: "door_not_moving" });
+    });
+  });
+
   it("rejects tokens outside the demo prefix and the configured list", async () => {
     expect((await call("/v1/state", {}, "random-token")).status).toBe(401);
     expect((await call("/v1/state", {}, "test-token-1")).status).toBe(200);

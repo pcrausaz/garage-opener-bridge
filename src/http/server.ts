@@ -5,7 +5,7 @@ import type { Config } from "../config.js";
 import type { Logger } from "../logger.js";
 import { Instance } from "../instance.js";
 import { MockRegistry } from "../mock/registry.js";
-import { DoorBusyError, DoorUnknownError } from "../door/service.js";
+import { DoorBusyError, DoorDirectionError, DoorNotMovingError, DoorUnknownError } from "../door/service.js";
 import { ProtectError } from "../protect/types.js";
 import { ContractValidator } from "./validation.js";
 import { attachSse } from "./sse.js";
@@ -140,6 +140,8 @@ export async function buildServer(o: ServerOptions) {
 
   app.setErrorHandler((error: Error & { statusCode?: number; validation?: unknown }, _req, reply) => {
     if (error instanceof DoorBusyError) return err(reply, 409, "door_busy", error.message);
+    if (error instanceof DoorNotMovingError) return err(reply, 409, "door_not_moving", error.message);
+    if (error instanceof DoorDirectionError) return err(reply, 409, "door_direction", error.message);
     if (error instanceof DoorUnknownError || error instanceof ProtectError) return err(reply, 503, "protect_unavailable", error.message);
     if (error.statusCode === 429) return reply.code(429).send({ error: "rate_limited", message: "too many requests" });
     if (error.validation || error.statusCode === 400) return err(reply, 400, "validation", error.message);
@@ -154,7 +156,7 @@ export async function buildServer(o: ServerOptions) {
 
   app.get("/v1/state", { config: { operationId: "getState" } }, async (req) => req.inst!.state());
 
-  const doorRoute = (command: DoorCommand) =>
+  const doorRoute = (command: Exclude<DoorCommand, "stop">) =>
     app.post<{ Querystring: { wait?: string; source?: string } }>(
       `/v1/door/${command}`,
       { config: { operationId: `${command}Door`, rateLimit: { max: 10, timeWindow: "1 minute" } } },
@@ -173,6 +175,19 @@ export async function buildServer(o: ServerOptions) {
   doorRoute("open");
   doorRoute("close");
   doorRoute("toggle");
+
+  // No `wait`: a stop is answered the moment the press lands. There is nothing to wait for — the tilt sensor
+  // reports the same contact for a door stopped part-way as for one standing fully open (ADR-0015).
+  app.post<{ Querystring: { source?: string } }>(
+    "/v1/door/stop",
+    { config: { operationId: "stopDoor", rateLimit: { max: 10, timeWindow: "1 minute" } } },
+    async (req) => {
+      const source = (req.query.source ?? "api").slice(0, 32);
+      const result = await req.inst!.door.stopDoor({ source, member: req.member?.name });
+      if (validateResponses) validator.assert("CommandResult", result);
+      return result;
+    },
+  );
 
   app.post<{ Params: { id: string } }>("/v1/auto-actions/:id/undo", { config: { operationId: "undoAutoAction", rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (req, reply) => {
     const lpr = req.inst!.lpr;

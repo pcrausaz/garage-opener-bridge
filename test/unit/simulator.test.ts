@@ -40,6 +40,36 @@ describe("protect simulator", () => {
     expect(sim.isOpened).toBe(false);
   });
 
+  it("reverses the interrupted travel on the press after a stop (ADR-0015)", () => {
+    const sim = new ProtectSimulator({ travelMs: 2000 });
+    // stopped on the way up → the next press closes
+    sim.pulse();
+    vi.advanceTimersByTime(600);
+    sim.pulse();
+    expect(sim.phase).toBe("stopped");
+    expect(sim.stoppedFrom).toBe("opening");
+    sim.pulse();
+    expect(sim.phase).toBe("closing");
+    vi.advanceTimersByTime(2100);
+    expect(sim.phase).toBe("closed");
+    expect(sim.isOpened).toBe(false);
+
+    // stopped on the way down → the next press opens, even though the contact still reads "opened"
+    sim.pulse();
+    vi.advanceTimersByTime(2100);
+    expect(sim.phase).toBe("open");
+    sim.pulse();
+    vi.advanceTimersByTime(600);
+    sim.pulse();
+    expect(sim.phase).toBe("stopped");
+    expect(sim.stoppedFrom).toBe("closing");
+    expect(sim.isOpened).toBe(true);
+    sim.pulse();
+    expect(sim.phase).toBe("opening");
+    vi.advanceTimersByTime(2100);
+    expect(sim.phase).toBe("open");
+  });
+
   it("rejects unknown devices", async () => {
     const sim = new ProtectSimulator();
     await expect(sim.activateOutput("nope", 0)).rejects.toThrow();

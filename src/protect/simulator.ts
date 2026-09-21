@@ -31,8 +31,8 @@ export type SimPhase = "closed" | "opening" | "open" | "closing" | "stopped";
 /**
  * In-memory Protect console. Door physics: a pulse from rest starts travel; the tilt sensor flips to
  * opened `tiltMs` after an opening pulse and flips to closed only at the end of a full close. A pulse
- * while moving stops the door (like a real opener); `reverseNextClose` simulates a safety-beam
- * reversal on the next close.
+ * while moving stops the door (like a real opener) and the press after that reverses the interrupted
+ * travel; `reverseNextClose` simulates a safety-beam reversal on the next close.
  */
 export class ProtectSimulator extends EventEmitter implements ProtectClient {
   phase: SimPhase = "closed";
@@ -40,6 +40,8 @@ export class ProtectSimulator extends EventEmitter implements ProtectClient {
   openStatusChangedAt: number;
   battery: number;
   reverseNextClose = false;
+  /** Which travel the last stop interrupted; a real opener reverses that direction on the next press. */
+  stoppedFrom: "opening" | "closing" | null = null;
   activations = 0;
   outputState: "on" | "off" = "off";
   readonly relayBehaviour: "pulse" | "toggle";
@@ -61,6 +63,7 @@ export class ProtectSimulator extends EventEmitter implements ProtectClient {
   reset(): void {
     this.clearTimer();
     this.phase = "closed";
+    this.stoppedFrom = null;
     this.setOpened(false);
     this.reverseNextClose = false;
     this.activations = 0;
@@ -94,8 +97,21 @@ export class ProtectSimulator extends EventEmitter implements ProtectClient {
           }, Math.max(0, this.travelMs - this.tiltMs));
         }, this.tiltMs);
         break;
-      case "open":
       case "stopped":
+        // A real opener reverses the travel it interrupted: stopped while opening → this press closes;
+        // stopped while closing → this press opens. The bridge predicts the same thing (door/state.ts).
+        if (this.stoppedFrom === "closing") {
+          this.stoppedFrom = null;
+          this.phase = "opening";
+          this.timer = setTimeout(() => {
+            this.phase = "open";
+            this.timer = null;
+          }, this.travelMs / 2);
+          break;
+        }
+        this.stoppedFrom = null;
+      // falls through: from a stop during an opening travel the next press closes, like an open door
+      case "open":
         if (this.reverseNextClose) {
           this.reverseNextClose = false;
           this.phase = "closing";
@@ -119,6 +135,7 @@ export class ProtectSimulator extends EventEmitter implements ProtectClient {
       case "opening":
       case "closing":
         this.clearTimer();
+        this.stoppedFrom = this.phase;
         this.phase = "stopped";
         break;
     }

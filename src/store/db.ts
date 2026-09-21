@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 
 export const AUDIT_KINDS = ["command", "alert", "hold", "webhook", "auto-action", "mock", "member"] as const;
 export type AuditKind = (typeof AUDIT_KINDS)[number];
-export type AuditOutcome = "ok" | "noop" | "failed" | "rejected" | "notified" | "undone";
+export type AuditOutcome = "ok" | "noop" | "failed" | "rejected" | "notified" | "undone" | "stopped";
 
 export interface AuditEntry {
   id: number;

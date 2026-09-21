@@ -62,9 +62,13 @@ paths:
       operationId: openDoor
       summary: Open the door (idempotent, single-flight, verified)
       description: |
-        No pulse is sent if the door is already OPEN. While the door is moving a second command is rejected with 409.
-        With `wait=true` (default) the response is returned after `door.travelSeconds` with the verified outcome;
-        `ok=false` and `to=STUCK` when the sensor did not confirm.
+        No pulse is sent if the door is already OPEN. While the door is moving a second command is rejected with 409
+        (`POST /v1/door/stop` is the exception). With `wait=true` (default) the response is returned after
+        `door.travelSeconds` with the verified outcome; `ok=false` and `to=STUCK` when the sensor did not confirm.
+
+        From `STOPPED` the opener reverses the travel that was interrupted, so only the direction in `nextPress`
+        is accepted; the other one is rejected with 409 `door_direction` rather than silently moving the door the
+        wrong way. Verification from `STOPPED` is weak by construction: the sensor already reads `isOpened`.
       parameters: [{ $ref: "#/components/parameters/Wait" }, { $ref: "#/components/parameters/Source" }]
       responses:
         "200": { $ref: "#/components/responses/CommandResult" }
@@ -77,6 +81,10 @@ paths:
       tags: [door]
       operationId: closeDoor
       summary: Close the door (idempotent, single-flight, verified)
+      description: |
+        Mirrors `POST /v1/door/open`. From `STOPPED` only the direction in `nextPress` is accepted; a `close`
+        on a door that was stopped mid-close is rejected with 409 `door_direction`, because one press would
+        open it. Automatic closes (nightly check, LPR) skip a `STOPPED` door entirely and notify instead.
       parameters: [{ $ref: "#/components/parameters/Wait" }, { $ref: "#/components/parameters/Source" }]
       responses:
         "200": { $ref: "#/components/responses/CommandResult" }
@@ -93,6 +101,28 @@ paths:
       responses:
         "200": { $ref: "#/components/responses/CommandResult" }
         "202": { $ref: "#/components/responses/CommandAccepted" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ProtectUnavailable" }
+  /v1/door/stop:
+    post:
+      tags: [door]
+      operationId: stopDoor
+      summary: Stop the door part-way (one press while it is travelling)
+      description: |
+        Sends the same single relay press the wall button does. While the door is travelling an opener stops
+        it, leaving the door part-way; this is the only command allowed during travel, and it cancels the
+        `open`/`close` that was counting down (that command's `CommandResult` returns with `error=cancelled`).
+
+        The result is **never verified**: the tilt sensor reports `isOpened` for anything that is not fully
+        closed, so the bridge cannot confirm where the door came to rest. The response carries
+        `pulsed=true, verified=false, to=STOPPED`.
+
+        409 `door_not_moving` when the door is not travelling — there is nothing to stop, and a press would
+        move the door instead.
+      parameters: [{ $ref: "#/components/parameters/Source" }]
+      responses:
+        "200": { $ref: "#/components/responses/CommandResult" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "409": { $ref: "#/components/responses/Conflict" }
         "503": { $ref: "#/components/responses/ProtectUnavailable" }
@@ -454,7 +484,10 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
     Conflict:
-      description: Door is moving or another command is in flight
+      description: |
+        Door is moving or another command is in flight (`door_busy`), the door is not moving so there is
+        nothing to stop (`door_not_moving`), or the door is `STOPPED` and one press moves it the other way
+        (`door_direction`).
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -466,12 +499,16 @@ components:
   schemas:
     DoorState:
       type: string
-      enum: [CLOSED, OPENING, OPEN, CLOSING, UNKNOWN, STUCK]
+      description: |
+        `STOPPED` means a press interrupted travel and the door is resting part-way. The garage-mounted
+        sensor is a single tilt contact, so the bridge cannot measure how far: `STOPPED` is remembered,
+        not observed, and degrades to `OPEN` after a restart or a stop made at the wall button.
+      enum: [CLOSED, OPENING, OPEN, CLOSING, UNKNOWN, STUCK, STOPPED]
     Error:
       type: object
       required: [error, message]
       properties:
-        error: { type: string, description: "Machine code (e.g. `unauthorized`, `door_busy`, `protect_unavailable`, `validation`)" }
+        error: { type: string, description: "Machine code (e.g. `unauthorized`, `door_busy`, `door_not_moving`, `door_direction`, `protect_unavailable`, `validation`)" }
         message: { type: string }
         details: { type: object, additionalProperties: true }
     Health:
@@ -561,12 +598,19 @@ components:
         updatedAt: { type: string, format: date-time }
         openTooLongMinutes: { type: integer }
         travelSeconds: { type: integer }
+        nextPress:
+          type: string
+          enum: [open, close, stop]
+          description: |
+            What one relay press does right now. The relay emulates a wall button, so the opener's own
+            reversal logic decides: moving → `stop`, `STOPPED` → the reverse of the interrupted travel,
+            otherwise the opposite of the resting state. Absent while the door state is UNKNOWN.
     CommandResult:
       type: object
       required: [ok, command, from, to, pulsed, verified, auditId, startedAt, finishedAt]
       properties:
         ok: { type: boolean }
-        command: { type: string, enum: [open, close, toggle] }
+        command: { type: string, enum: [open, close, toggle, stop] }
         from: { $ref: "#/components/schemas/DoorState" }
         to: { $ref: "#/components/schemas/DoorState" }
         pulsed: { type: boolean, description: "false when already in the target state" }
@@ -574,13 +618,13 @@ components:
         auditId: { type: integer }
         startedAt: { type: string, format: date-time }
         finishedAt: { type: string, format: date-time }
-        error: { type: string, description: "verification_failed | relay_output_stuck" }
+        error: { type: string, description: "verification_failed | relay_output_stuck | cancelled" }
     CommandAccepted:
       type: object
       required: [accepted, command, auditId, expectedBy]
       properties:
         accepted: { type: boolean, const: true }
-        command: { type: string, enum: [open, close, toggle] }
+        command: { type: string, enum: [open, close, toggle, stop] }
         auditId: { type: integer }
         expectedBy: { type: string, format: date-time }
     Alert:
@@ -656,7 +700,7 @@ components:
         command: { type: string }
         from: { $ref: "#/components/schemas/DoorState" }
         to: { $ref: "#/components/schemas/DoorState" }
-        outcome: { type: string, enum: [ok, noop, failed, rejected, notified, undone] }
+        outcome: { type: string, enum: [ok, noop, failed, rejected, notified, undone, stopped] }
         detail: { type: string }
     Discovery:
       type: object

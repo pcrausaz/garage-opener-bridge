@@ -13,7 +13,7 @@ export type VehiclePresence = Schemas["VehiclePresence"];
 export type Health = Schemas["Health"];
 export type Discovery = Schemas["Discovery"];
 export type ApiError = Schemas["Error"];
-export type DoorCommand = "open" | "close" | "toggle";
+export type DoorCommand = "open" | "close" | "toggle" | "stop";
 
 export interface AutoAction {
   id: string;

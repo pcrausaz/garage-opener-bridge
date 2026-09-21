@@ -5,6 +5,10 @@ import type { HoldService } from "../hold.js";
 import type { Notifier } from "../notify/notifier.js";
 import type { VehicleTracker } from "./vehicle.js";
 import { msUntilNext } from "./schedule.js";
+import type { AlertAction } from "../types.js";
+
+/** Door states the alert rules treat as "open": fully open, and stopped part-way (ADR-0015). */
+const OPEN_ISH = new Set(["OPEN", "STOPPED"]);
 
 export interface AlertEngineOptions {
   openTooLongMinutes: number;
@@ -64,12 +68,22 @@ export class AlertEngine {
     }
   }
 
+  /**
+   * Offer "Close now" only when one press actually closes the door. A door stopped mid-close reverses on the
+   * next press, so the button would answer 409 `door_direction` — better not to show it at all.
+   */
+  private actions(): AlertAction[] {
+    const canClose = this.d.door.snapshot().nextPress !== "open";
+    return canClose ? ["close-now", "hold-2h", "ignore"] : ["hold-2h", "ignore"];
+  }
+
+  /** A door stopped part-way is open — less open, but open all night just the same, so the rules arm for it. */
   private isOpen(): boolean {
-    return this.d.door.snapshot().door === "OPEN";
+    return OPEN_ISH.has(this.d.door.snapshot().door);
   }
 
   private onDoor(door: string, fromHoldExpiry = false): void {
-    if (door !== "OPEN") {
+    if (!OPEN_ISH.has(door)) {
       if (this.openTimer) clearTimeout(this.openTimer);
       if (this.vehicleTimer) clearTimeout(this.vehicleTimer);
       this.openTimer = null;
@@ -87,11 +101,12 @@ export class AlertEngine {
       this.openTimer = null;
       if (episode !== this.openEpisode || !this.isOpen() || this.d.hold.isActive()) return;
       this.fire("open-too-long");
+      const partly = this.d.door.snapshot().door === "STOPPED";
       void this.d.notifier.alert(
         "open-too-long",
-        "Garage door still open",
-        `The garage door has been open for ${this.o.openTooLongMinutes} minutes.`,
-        ["close-now", "hold-2h", "ignore"],
+        partly ? "Garage door still part-way open" : "Garage door still open",
+        `The garage door has been ${partly ? "stopped part-way" : "open"} for ${this.o.openTooLongMinutes} minutes.`,
+        this.actions(),
       );
     }, due);
     this.openTimer.unref?.();
@@ -117,7 +132,7 @@ export class AlertEngine {
         wantPresent
           ? `A vehicle has been inside the garage with the door open for ${this.o.vehicleDoorOpenMinutes} minutes (camera heuristic).`
           : `The vehicle left ${this.o.vehicleDoorOpenMinutes} minutes ago and the door is still open (camera heuristic).`,
-        ["close-now", "hold-2h", "ignore"],
+        this.actions(),
       );
     }, this.o.vehicleDoorOpenMinutes * 60_000);
     this.vehicleTimer.unref?.();
@@ -135,6 +150,17 @@ export class AlertEngine {
   async runNightly(): Promise<void> {
     if (!this.isOpen() || this.d.hold.isActive()) return;
     this.fire("nightly-check");
+    // A door stopped part-way is never closed unattended: one press reverses the travel it interrupted, so a
+    // door stopped mid-close would be *opened* wide at 22:00 by an auto-close. Tell the owner instead (ADR-0015).
+    if (this.d.door.snapshot().door === "STOPPED") {
+      await this.d.notifier.alert(
+        "nightly-check",
+        "Garage door is part-way open tonight",
+        "The nightly check found the garage door stopped part-way. It is not closed automatically: from here one press reverses the travel that was stopped.",
+        this.actions(),
+      );
+      return;
+    }
     if (this.o.nightlyAutoclose) {
       await this.d.notifier.alert("nightly-check", "Closing the garage for the night", "The door was open at the nightly check; closing it now.", ["undo", "ignore"]);
       try {

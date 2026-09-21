@@ -75,6 +75,38 @@ describe("alert engine (mock instance, fake timers)", () => {
     expect(inst.door.snapshot().door).toBe("CLOSED");
   });
 
+  it("rule 1 arms for a door stopped part-way, but never offers a close that would open it (ADR-0015)", async () => {
+    const m = await mockInstance({}, { nativePulse: true });
+    inst = m.inst;
+    // Stop the door on the way down: from here one press opens it again.
+    await openDoor(inst);
+    void inst.door.close({ source: "test" });
+    await vi.advanceTimersByTimeAsync(2_000);
+    await inst.door.stopDoor({ source: "test" });
+    expect(inst.door.snapshot().door).toBe("STOPPED");
+    expect(inst.door.snapshot().nextPress).toBe("open");
+
+    await vi.advanceTimersByTimeAsync(15 * MIN + 100);
+    expect(m.capture.rules()).toEqual(["open-too-long"]);
+    expect(m.capture.alerts[0]?.actions).toEqual(["hold-2h", "ignore"]);
+  });
+
+  it("rule 2: a door stopped part-way is reported, never auto-closed", async () => {
+    const m = await mockInstance({ alerts: { nightlyAutoclose: true } }, { nativePulse: true });
+    inst = m.inst;
+    await openDoor(inst);
+    void inst.door.close({ source: "test" });
+    await vi.advanceTimersByTimeAsync(2_000);
+    await inst.door.stopDoor({ source: "test" });
+
+    await inst.alerts.runNightly();
+    expect(m.capture.rules()).toEqual(["nightly-check"]);
+    // The press an auto-close would send opens this door, so the rule notifies and leaves it alone.
+    expect(m.capture.alerts[0]?.actions).not.toContain("undo");
+    await vi.advanceTimersByTimeAsync(12_100);
+    expect(inst.door.snapshot().door).toBe("STOPPED");
+  });
+
   it("rule 2 fires from the scheduler at 22:00 local time", async () => {
     const m = await mockInstance({ tz: "UTC" }, { nativePulse: true });
     inst = m.inst;
