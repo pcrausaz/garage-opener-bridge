@@ -1,0 +1,83 @@
+# Garage Opener bridge — self-hosting reference (https://garageopener.app/self-hosting)
+#
+#   cp .env.example .env    # then fill it in; see the comments there
+#   docker compose up -d
+#   curl -s localhost:8787/healthz
+#
+# This file is for *your* deployment. Pascal's own NAS stack lives in deploy/stack/ and the public demo
+# bridge in the liqpil-services-infra repo (ADR-0014); neither is a template for this one.
+#
+# Networking — pick one, and read this before you choose:
+#
+#   network_mode: host   (the default below)
+#     Required for Bonjour: the app finds the bridge by mDNS on `_garage-opener._tcp`, and multicast does
+#     not cross the Docker bridge network. Without it you must type the bridge's address into the app by
+#     hand. Linux only; on Docker Desktop for macOS/Windows host networking does not do what you want.
+#
+#   ports: ["8787:8787"]  (uncomment the `ports` block and delete `network_mode: host`)
+#     Works everywhere. Set BONJOUR=false so the bridge does not advertise a service nobody can reach,
+#     and pair by typing the address.
+#
+# The `ntfy` service is optional and off by default — start it with `--profile ntfy`. It is a second way
+# to get alerts on top of the app's own notifications; you do not need it.
+
+services:
+  bridge:
+    # Pin a version. `latest` is this project's development tag and can move under you.
+    image: ghcr.io/pcrausaz/garage-opener-bridge:${GARAGE_BRIDGE_TAG:?set GARAGE_BRIDGE_TAG, e.g. 0.4.1}
+    container_name: garage-bridge
+    restart: unless-stopped
+    network_mode: host
+    # ports:
+    #   - "8787:8787"
+    env_file: .env
+    environment:
+      BRIDGE_MODE: live
+      PORT: ${PORT:-8787}
+      DATA_DIR: /data
+    volumes:
+      - garage-bridge-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:'+(process.env.PORT||8787)+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # Optional: `docker compose --profile ntfy up -d`
+  ntfy:
+    profiles: ["ntfy"]
+    image: binwiederhier/ntfy:${NTFY_TAG:-v2.14.0}
+    container_name: garage-ntfy
+    restart: unless-stopped
+    command: serve
+    ports:
+      - "${NTFY_PORT:-8788}:80"
+    environment:
+      TZ: ${TZ:-UTC}
+      NTFY_BASE_URL: ${NTFY_BASE_URL:?set NTFY_BASE_URL when using the ntfy profile}
+      NTFY_LISTEN_HTTP: ":80"
+      NTFY_CACHE_FILE: /var/cache/ntfy/cache.db
+      NTFY_CACHE_DURATION: 24h
+      NTFY_AUTH_FILE: /var/lib/ntfy/user.db
+      # deny-all plus one publish/subscribe user keeps your topic private on a shared LAN
+      NTFY_AUTH_DEFAULT_ACCESS: ${NTFY_AUTH_DEFAULT_ACCESS:-deny-all}
+      NTFY_ENABLE_LOGIN: "true"
+    volumes:
+      - garage-ntfy-cache:/var/cache/ntfy
+      - garage-ntfy-lib:/var/lib/ntfy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:80/v1/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  # Named explicitly so renaming the compose project never orphans your activity log.
+  garage-bridge-data:
+    name: garage-bridge-data
+  garage-ntfy-cache:
+    name: garage-ntfy-cache
+  garage-ntfy-lib:
+    name: garage-ntfy-lib

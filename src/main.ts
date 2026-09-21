@@ -5,6 +5,7 @@ import { MockRegistry } from "./mock/registry.js";
 import { buildServer } from "./http/server.js";
 import { VERSION } from "./version.js";
 import { installId, startBonjour } from "./bonjour.js";
+import { printPairingInvite } from "./pairing.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -22,6 +23,9 @@ async function main(): Promise<void> {
   const app = await buildServer({ config, logger, instance, registry });
   await app.listen({ host: config.host, port: config.port });
   logger.info({ host: config.host, port: config.port }, "listening");
+  // Deliberately before the console handshake: pairing only needs the local member store, so the link is
+  // there to copy even while Protect is still unreachable and /healthz reports ready:false.
+  if (instance) printPairingInvite(instance, config, logger);
   // Live mode: discovery/console problems must not take the port down; /healthz reports ready:false meanwhile.
   if (instance) void startWithRetry(instance, logger, { stopped: () => stopping });
   const bonjourOn = config.bonjour ?? config.bridge.mode === "live";

@@ -21,6 +21,8 @@ export const ConfigSchema = z.object({
    *  (invite claim, Alarm Manager webhook) collapse into one shared bucket. Only enable when a proxy
    *  you control actually sets the header — otherwise a client can forge its own address. */
   trustProxy: bool.default(false),
+  /** Print a single-use pairing invite at startup while no phone has joined (see src/pairing.ts). */
+  pairingBanner: bool.default(true),
   /** mDNS advertising; defaults to true in live mode, false in mock. */
   bonjour: bool.optional(),
   /** Caps on concurrent `/v1/events` streams. Each stream holds a socket, five bus listeners and a
@@ -93,6 +95,7 @@ export const ENV_MAP: Record<string, string> = {
   DATA_DIR: "dataDir",
   VALIDATE_RESPONSES: "validateResponses",
   TRUST_PROXY: "trustProxy",
+  PAIRING_BANNER: "pairingBanner",
   SSE_MAX_PER_TOKEN: "sse.maxPerToken",
   SSE_MAX_TOTAL: "sse.maxTotal",
   PROTECT_URL: "protect.url",
