@@ -16,8 +16,16 @@ export const ConfigSchema = z.object({
   publicUrl: z.string().url().optional(),
   dataDir: z.string().default("./data"),
   validateResponses: bool.default(false),
+  /** Trust `X-Forwarded-For` when the bridge sits behind a reverse proxy or tunnel. Without it every
+   *  request appears to come from the proxy, so the per-IP limits on the unauthenticated routes
+   *  (invite claim, Alarm Manager webhook) collapse into one shared bucket. Only enable when a proxy
+   *  you control actually sets the header — otherwise a client can forge its own address. */
+  trustProxy: bool.default(false),
   /** mDNS advertising; defaults to true in live mode, false in mock. */
   bonjour: bool.optional(),
+  /** Caps on concurrent `/v1/events` streams. Each stream holds a socket, five bus listeners and a
+   *  heartbeat timer, so an authenticated client could otherwise exhaust the process by opening many. */
+  sse: z.object({ maxPerToken: int.default(8), maxTotal: int.default(64) }).prefault({}),
   protect: z
     .object({
       url: z.string().url().optional(),
@@ -84,6 +92,9 @@ export const ENV_MAP: Record<string, string> = {
   PUBLIC_URL: "publicUrl",
   DATA_DIR: "dataDir",
   VALIDATE_RESPONSES: "validateResponses",
+  TRUST_PROXY: "trustProxy",
+  SSE_MAX_PER_TOKEN: "sse.maxPerToken",
+  SSE_MAX_TOTAL: "sse.maxTotal",
   PROTECT_URL: "protect.url",
   PROTECT_API_KEY: "protect.apiKey",
   PROTECT_TLS: "protect.tls",
@@ -175,11 +186,57 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, configFile?: st
   return cfg;
 }
 
+/** Admin tokens open the door, so they are held to a generated-secret standard, not a password one. */
+export const MIN_TOKEN_LENGTH = 24;
+
+/** Rejected outright: these are what people actually type when a field says "token". */
+const WEAK_TOKENS = new Set(["changeme", "password", "secret", "token", "garage", "admin", "bridge", "test", "demo"]);
+
+export function assertStrongToken(token: string, label = "BRIDGE_TOKENS"): void {
+  if (token.length < MIN_TOKEN_LENGTH) {
+    throw new Error(`${label} entries must be at least ${MIN_TOKEN_LENGTH} characters (generate one with \`openssl rand -hex 24\`)`);
+  }
+  const lower = token.toLowerCase();
+  if (WEAK_TOKENS.has(lower) || [...WEAK_TOKENS].some((w) => lower.startsWith(w) && /^[a-z]+[0-9]*$/.test(lower))) {
+    throw new Error(`${label} contains a guessable value; generate one with \`openssl rand -hex 24\``);
+  }
+  if (new Set(token).size < 5) throw new Error(`${label} contains a low-entropy value; generate one with \`openssl rand -hex 24\``);
+}
+
+/** Hosts where a self-signed console certificate is a fact of life rather than a red flag. */
+export function isLanHost(host: string): boolean {
+  const h = host.replace(/^\[|\]$/g, "").toLowerCase();
+  if (h === "localhost" || h.endsWith(".local") || h.endsWith(".lan") || h.endsWith(".internal") || h.endsWith(".home.arpa")) return true;
+  if (/^127\./.test(h) || h === "::1") return true;
+  if (/^10\./.test(h) || /^192\.168\./.test(h)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return true;
+  if (/^169\.254\./.test(h)) return true;
+  if (/^f[cd][0-9a-f]{2}:/.test(h) || /^fe80:/.test(h)) return true; // ULA / link-local
+  return false;
+}
+
 export function validateMode(cfg: Config): void {
   if (cfg.bridge.mode === "live") {
     if (!cfg.protect.url || !cfg.protect.apiKey) throw new Error("live mode requires PROTECT_URL and PROTECT_API_KEY");
     if (cfg.bridge.tokens.length === 0) throw new Error("live mode requires at least one BRIDGE_TOKENS entry");
-    for (const t of cfg.bridge.tokens) if (t.length < 8) throw new Error("bridge tokens must be at least 8 characters");
+    for (const t of cfg.bridge.tokens) assertStrongToken(t);
+    // `insecure` skips certificate verification entirely. On a LAN that is the pragmatic default for the
+    // console's self-signed cert; across the internet it hands the Protect API key to any MITM.
+    if (cfg.protect.tls === "insecure") {
+      const host = (() => {
+        try {
+          return new URL(cfg.protect.url).hostname;
+        } catch {
+          return "";
+        }
+      })();
+      if (host && !isLanHost(host)) {
+        throw new Error(
+          `PROTECT_TLS=insecure is refused for the non-LAN host ${host}: the Protect API key would be exposed to anyone on the path. ` +
+            "Use PROTECT_TLS=fingerprint:<sha256> (see docs/setup/protect-api-key.md) or PROTECT_TLS=system.",
+        );
+      }
+    }
   }
   if (cfg.events.webhookUrl && !cfg.events.webhookSecret) throw new Error("EVENTS_WEBHOOK_SECRET is required with EVENTS_WEBHOOK_URL");
 }

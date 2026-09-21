@@ -21,7 +21,7 @@ describe("toggle relay semantics", () => {
   const boot = async (relay: ConfigInput["relay"]) => {
     protect = await startMockProtect({ travelMs: 100, relayBehaviour: "toggle" });
     const cfg = makeConfig({
-      bridge: { mode: "live", tokens: ["live-token-1"] },
+      bridge: { mode: "live", tokens: ["live-token-0123456789abcdef"] },
       protect: { url: protect.url, apiKey: protect.apiKey, tls: "system" },
       door: { travelSeconds: 1, verifyAfterSeconds: 0 },
       poll: { movingMs: 100, idleMs: 100 },

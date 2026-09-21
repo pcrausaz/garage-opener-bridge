@@ -150,10 +150,17 @@ export class Store {
   }
 }
 
-/** RFC 4180 field: quote when it contains a comma, quote, CR or LF; double any embedded quote. */
+/**
+ * RFC 4180 field: quote when it contains a comma, quote, CR or LF; double any embedded quote.
+ *
+ * Fields that begin with a formula character are additionally prefixed with an apostrophe. Member names and
+ * the `?source=` label are supplied by whoever holds a token, and Excel/Numbers/Sheets evaluate a leading
+ * `=`, `+`, `-` or `@` when the owner opens the exported activity log.
+ */
 function csvField(v: string | number | undefined): string {
   if (v === undefined || v === null) return "";
-  const s = String(v);
+  let s = String(v);
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
   return /[",\r\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
 }
 

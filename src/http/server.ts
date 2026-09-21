@@ -73,7 +73,7 @@ export async function buildServer(o: ServerOptions) {
   const validateResponses = o.validateResponses ?? config.validateResponses;
   const httpLog = o.logger.child({ component: "http" });
   if (config.logLevel !== "debug" && config.logLevel !== "trace") httpLog.level = "warn"; // request logging only at debug
-  const app = Fastify({ loggerInstance: httpLog, bodyLimit: 1_048_576 });
+  const app = Fastify({ loggerInstance: httpLog, bodyLimit: 1_048_576, trustProxy: config.trustProxy });
   // "METHOD /path" for every registered route (contract tests diff this against the OpenAPI).
   const routeList = new Set<string>();
   app.decorate("routeList", routeList);
@@ -112,17 +112,44 @@ export async function buildServer(o: ServerOptions) {
     mode === "mock" && token.startsWith(config.bridge.mockTokenPrefix) && token.length >= config.bridge.mockTokenPrefix.length + 1;
   const unauthenticated = (url: string) => !url.startsWith("/v1/") || url.startsWith("/v1/webhooks/") || /^\/v1\/invites\/[^/]+\/claim(\?|$)/.test(url);
 
+  // Authentication is settled in this hook, which runs before the per-route rate limiter, so a request that
+  // never presents a valid token is charged to no bucket at all. Failures are counted per source address so
+  // that an unauthenticated caller cannot hammer the bridge indefinitely. The count is only ever consulted
+  // *after* authentication has been attempted, so a valid admin or member token is never collateral damage —
+  // which matters because a household behind a tunnel shares one address.
+  const authFailures = new Map<string, { start: number; count: number; warned: boolean }>();
+  const AUTH_FAILURE_LIMIT = 30;
+  const AUTH_FAILURE_WINDOW_MS = 60_000;
+  const noteAuthFailure = (req: FastifyRequest): boolean => {
+    const now = Date.now();
+    if (authFailures.size > 1024) for (const [k, v] of authFailures) if (now - v.start >= AUTH_FAILURE_WINDOW_MS) authFailures.delete(k);
+    const cur = authFailures.get(req.ip);
+    const w = !cur || now - cur.start >= AUTH_FAILURE_WINDOW_MS ? { start: now, count: 0, warned: false } : cur;
+    w.count++;
+    authFailures.set(req.ip, w);
+    if (w.count <= AUTH_FAILURE_LIMIT) return false;
+    if (!w.warned) {
+      w.warned = true;
+      httpLog.warn({ ip: req.ip, failures: w.count }, "repeated authentication failures; throttling this address");
+    }
+    return true;
+  };
+  const rejectAuth = (req: FastifyRequest, reply: FastifyReply) =>
+    noteAuthFailure(req)
+      ? err(reply, 429, "rate_limited", "too many failed authentication attempts")
+      : err(reply, 401, "unauthorized", "missing or invalid bearer token");
+
   app.addHook("onRequest", async (req, reply) => {
     if (unauthenticated(req.url)) return;
     const token = tokenOf(req);
-    if (!token) return err(reply, 401, "unauthorized", "missing or invalid bearer token");
+    if (!token) return rejectAuth(req, reply);
     let inst: Instance;
     if (o.registry) {
-      if (!config.bridge.tokens.some((t) => safeEq(t, token)) && !isDemoToken(token)) return err(reply, 401, "unauthorized", "missing or invalid bearer token");
+      if (!config.bridge.tokens.some((t) => safeEq(t, token)) && !isDemoToken(token)) return rejectAuth(req, reply);
       inst = await o.registry.get(token);
     } else inst = o.instance!;
     const member = inst.members.authenticate(token) ?? (isDemoToken(token) && !inst.members.isRevoked(token) ? { id: "demo", name: "Demo", kind: "admin" as const } : null);
-    if (!member) return err(reply, 401, "unauthorized", "missing or invalid bearer token");
+    if (!member) return rejectAuth(req, reply);
     if (member.id !== "demo") inst.members.touch(member.id);
     req.token = token;
     req.member = member;
@@ -149,7 +176,7 @@ export async function buildServer(o: ServerOptions) {
     return err(reply, 500, "internal", "internal error");
   });
 
-  app.get("/healthz", { config: { operationId: "getHealth", rateLimit: false } }, async () => {
+  app.get("/healthz", { config: { operationId: "getHealth", rateLimit: { max: 120, timeWindow: "1 minute", keyGenerator: (req: FastifyRequest) => req.ip } } }, async () => {
     if (o.instance) return o.instance.health();
     return { ok: true, ready: true, mode, version: (await import("../version.js")).VERSION, protect: { ok: true, applicationVersion: "mock" } };
   });
@@ -207,9 +234,36 @@ export async function buildServer(o: ServerOptions) {
     return reply.code(204).send();
   });
 
+  // Each stream pins a socket, five bus listeners and a heartbeat timer for as long as it is open, so the
+  // count is capped per token and overall; without it one authenticated client can exhaust the process.
+  const sseOpen = new Map<string, number>();
+  let sseTotal = 0;
   app.get("/v1/events", { config: { operationId: "streamEvents", rateLimit: false } }, async (req, reply) => {
-    attachSse(reply, req.inst!.bus, req.inst!.state());
-    await new Promise<void>((resolve) => reply.raw.on("close", resolve));
+    const key = req.token!;
+    const perToken = sseOpen.get(key) ?? 0;
+    if (sseTotal >= config.sse.maxTotal || perToken >= config.sse.maxPerToken) {
+      return err(reply, 429, "rate_limited", "too many open event streams");
+    }
+    sseOpen.set(key, perToken + 1);
+    sseTotal++;
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      sseTotal--;
+      const n = (sseOpen.get(key) ?? 1) - 1;
+      if (n <= 0) sseOpen.delete(key);
+      else sseOpen.set(key, n);
+    };
+    try {
+      attachSse(reply, req.inst!.bus, req.inst!.state());
+      await new Promise<void>((resolve) => {
+        reply.raw.on("close", resolve);
+        reply.raw.on("error", resolve);
+      });
+    } finally {
+      release();
+    }
     return reply;
   });
 

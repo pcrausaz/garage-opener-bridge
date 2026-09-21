@@ -18,7 +18,7 @@ describe("live door service against the fixture-backed Protect mock", () => {
 
   const cfg = (extra = {}) =>
     makeConfig({
-      bridge: { mode: "live", tokens: ["live-token-1"] },
+      bridge: { mode: "live", tokens: ["live-token-0123456789abcdef"] },
       protect: { url: protect.url, apiKey: protect.apiKey, tls: "system" },
       door: { travelSeconds: 1, verifyAfterSeconds: 0 },
       poll: { movingMs: 100, idleMs: 300 },

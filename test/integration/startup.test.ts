@@ -12,7 +12,7 @@ describe("resilient live startup", () => {
   let app: BridgeServer;
   let inst: Instance;
   const v = new ContractValidator();
-  const auth = { authorization: "Bearer live-token-1" };
+  const auth = { authorization: "Bearer live-token-0123456789abcdef" };
   // controllable clock for the backoff: each sleep parks until the test releases it
   const delays: number[] = [];
   let release: (() => void) | null = null;
@@ -35,7 +35,7 @@ describe("resilient live startup", () => {
     protect = await startMockProtect({ travelMs: 200 });
     protect.state.failNext = 1_000_000; // console "down" at boot
     const cfg = makeConfig({
-      bridge: { mode: "live", tokens: ["live-token-1"], webhookSecret: "0123456789abcdef" },
+      bridge: { mode: "live", tokens: ["live-token-0123456789abcdef"], webhookSecret: "0123456789abcdef" },
       protect: { url: protect.url, apiKey: protect.apiKey, tls: "system" },
       door: { travelSeconds: 1, verifyAfterSeconds: 0 },
       poll: { movingMs: 100, idleMs: 300 },

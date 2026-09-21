@@ -25,8 +25,8 @@ describe("config", () => {
   it("live mode requires console credentials and a token", () => {
     expect(() => loadConfig({ BRIDGE_MODE: "live" })).toThrow(/PROTECT_URL/);
     expect(() => loadConfig({ BRIDGE_MODE: "live", PROTECT_URL: "https://192.168.50.1", PROTECT_API_KEY: "k" })).toThrow(/BRIDGE_TOKENS/);
-    expect(() => loadConfig({ BRIDGE_MODE: "live", PROTECT_URL: "https://192.168.50.1", PROTECT_API_KEY: "k", BRIDGE_TOKENS: "short" })).toThrow(/8 characters/);
-    expect(loadConfig({ BRIDGE_MODE: "live", PROTECT_URL: "https://192.168.50.1", PROTECT_API_KEY: "k", BRIDGE_TOKENS: "longenough" }).bridge.mode).toBe("live");
+    expect(() => loadConfig({ BRIDGE_MODE: "live", PROTECT_URL: "https://192.168.50.1", PROTECT_API_KEY: "k", BRIDGE_TOKENS: "short" })).toThrow(/24 characters/);
+    expect(loadConfig({ BRIDGE_MODE: "live", PROTECT_URL: "https://192.168.50.1", PROTECT_API_KEY: "k", BRIDGE_TOKENS: "0123456789abcdef0123456789abcdef" }).bridge.mode).toBe("live");
   });
 
   it("rejects bad values", () => {
