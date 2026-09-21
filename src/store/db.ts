@@ -2,7 +2,8 @@ import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
-export type AuditKind = "command" | "alert" | "hold" | "webhook" | "auto-action" | "mock" | "member";
+export const AUDIT_KINDS = ["command", "alert", "hold", "webhook", "auto-action", "mock", "member"] as const;
+export type AuditKind = (typeof AUDIT_KINDS)[number];
 export type AuditOutcome = "ok" | "noop" | "failed" | "rejected" | "notified" | "undone";
 
 export interface AuditEntry {
@@ -94,12 +95,20 @@ export class Store {
     this.updateAudit.run({ id, to: patch.to ?? null, outcome: patch.outcome, detail: patch.detail ?? null });
   }
 
-  listAudit(limit = 50, before?: number): AuditEntry[] {
-    const rows = (
-      before
-        ? this.db.prepare("SELECT * FROM audit WHERE id < ? ORDER BY id DESC LIMIT ?").all(before, limit)
-        : this.db.prepare("SELECT * FROM audit ORDER BY id DESC LIMIT ?").all(limit)
-    ) as Record<string, unknown>[];
+  /** Newest first. `kinds` (when non-empty) restricts the result to those audit kinds. */
+  listAudit(limit = 50, before?: number, kinds?: readonly AuditKind[]): AuditEntry[] {
+    const where: string[] = [];
+    const params: unknown[] = [];
+    if (before !== undefined) {
+      where.push("id < ?");
+      params.push(before);
+    }
+    if (kinds?.length) {
+      where.push(`kind IN (${kinds.map(() => "?").join(",")})`);
+      params.push(...kinds);
+    }
+    const sql = `SELECT * FROM audit${where.length ? ` WHERE ${where.join(" AND ")}` : ""} ORDER BY id DESC LIMIT ?`;
+    const rows = this.db.prepare(sql).all(...params, limit) as Record<string, unknown>[];
     return rows.map((r) => {
       const e: AuditEntry = { id: r.id as number, at: r.at as string, kind: r.kind as AuditKind, source: r.source as string, outcome: r.outcome as AuditOutcome };
       if (r.member) e.member = r.member as string;
@@ -109,6 +118,21 @@ export class Store {
       if (r.detail) e.detail = r.detail as string;
       return e;
     });
+  }
+
+  countAudit(): number {
+    return (this.db.prepare("SELECT COUNT(*) AS n FROM audit").get() as { n: number }).n;
+  }
+
+  /**
+   * Drop audit rows older than `days`. `days <= 0` keeps everything (the default), so an install that never
+   * sets AUDIT_RETENTION_DAYS behaves exactly as before. Returns how many rows went.
+   */
+  pruneAudit(days: number, now = Date.now()): number {
+    if (!Number.isFinite(days) || days <= 0) return 0;
+    const cutoff = new Date(now - days * 86_400_000).toISOString();
+    const res = this.db.prepare("DELETE FROM audit WHERE at < ?").run(cutoff);
+    return res.changes;
   }
 
   get<T>(key: string): T | null {
@@ -124,4 +148,19 @@ export class Store {
   close(): void {
     this.db.close();
   }
+}
+
+/** RFC 4180 field: quote when it contains a comma, quote, CR or LF; double any embedded quote. */
+function csvField(v: string | number | undefined): string {
+  if (v === undefined || v === null) return "";
+  const s = String(v);
+  return /[",\r\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
+}
+
+export const AUDIT_CSV_HEADER = ["id", "at", "kind", "source", "member", "command", "from", "to", "outcome", "detail"] as const;
+
+/** Newest-first CSV of audit rows, UTF-8, no BOM. Timestamps stay ISO-8601 so they sort and re-parse. */
+export function auditToCsv(entries: readonly AuditEntry[]): string {
+  const rows = entries.map((e) => [e.id, e.at, e.kind, e.source, e.member, e.command, e.from, e.to, e.outcome, e.detail].map(csvField).join(","));
+  return [AUDIT_CSV_HEADER.join(","), ...rows].join("\r\n") + "\r\n";
 }

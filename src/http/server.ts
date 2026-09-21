@@ -12,6 +12,7 @@ import { attachSse } from "./sse.js";
 import { classifyAlarmPayload, stripThumbnails } from "../webhooks/classify.js";
 import type { ApiError, DoorCommand } from "../types.js";
 import type { MemberIdentity } from "../members.js";
+import { AUDIT_KINDS, auditToCsv, type AuditKind } from "../store/db.js";
 
 export interface ServerOptions {
   config: Config;
@@ -197,13 +198,41 @@ export async function buildServer(o: ServerOptions) {
     return reply;
   });
 
-  app.get<{ Querystring: { limit?: string; before?: string } }>("/v1/audit", { config: { operationId: "listAudit" } }, async (req, reply) => {
-    const limit = req.query.limit ? Number(req.query.limit) : 50;
-    const before = req.query.before ? Number(req.query.before) : undefined;
-    if (!Number.isInteger(limit) || limit < 1 || limit > 500 || (before !== undefined && !Number.isInteger(before))) return err(reply, 400, "validation", "invalid limit/before");
-    const entries = req.inst!.store.listAudit(limit, before);
+  /** Shared parsing for both audit routes; returns an error string instead of throwing. */
+  const auditQuery = (q: { limit?: string; before?: string; kind?: string }, maxLimit: number, defaultLimit: number) => {
+    const limit = q.limit ? Number(q.limit) : defaultLimit;
+    const before = q.before ? Number(q.before) : undefined;
+    if (!Number.isInteger(limit) || limit < 1 || limit > maxLimit) return { error: `limit must be an integer between 1 and ${maxLimit}` };
+    if (before !== undefined && !Number.isInteger(before)) return { error: "before must be an integer" };
+    let kinds: AuditKind[] | undefined;
+    if (q.kind) {
+      kinds = q.kind.split(",").map((k) => k.trim()).filter(Boolean) as AuditKind[];
+      const bad = kinds.find((k) => !(AUDIT_KINDS as readonly string[]).includes(k));
+      if (bad) return { error: `unknown kind ${bad}; expected one of ${AUDIT_KINDS.join(", ")}` };
+      if (kinds.length === 0) kinds = undefined;
+    }
+    return { limit, before, kinds };
+  };
+
+  app.get<{ Querystring: { limit?: string; before?: string; kind?: string } }>("/v1/audit", { config: { operationId: "listAudit" } }, async (req, reply) => {
+    const q = auditQuery(req.query, 500, 50);
+    if (q.error) return err(reply, 400, "validation", q.error);
+    const entries = req.inst!.store.listAudit(q.limit!, q.before, q.kinds);
     if (validateResponses) for (const e of entries) validator.assert("AuditEntry", e);
     return { entries };
+  });
+
+  // Separate path rather than ?format=csv on /v1/audit: one media type per operation keeps the generated
+  // Swift client's response handling (and the contract validator) simple.
+  app.get<{ Querystring: { limit?: string; before?: string; kind?: string } }>("/v1/audit.csv", { config: { operationId: "exportAuditCsv" } }, async (req, reply) => {
+    const q = auditQuery(req.query, 20_000, 5000);
+    if (q.error) return err(reply, 400, "validation", q.error);
+    const entries = req.inst!.store.listAudit(q.limit!, q.before, q.kinds);
+    const stamp = new Date().toISOString().slice(0, 10);
+    return reply
+      .header("content-type", "text/csv; charset=utf-8")
+      .header("content-disposition", `attachment; filename="garage-activity-${stamp}.csv"`)
+      .send(auditToCsv(entries));
   });
 
   app.get("/v1/discovery", { config: { operationId: "getDiscovery" } }, async (req) => req.inst!.discoveryNow());

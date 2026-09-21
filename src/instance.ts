@@ -6,6 +6,7 @@ import { HttpProtectClient } from "./protect/client.js";
 import { DEMO_PLATE, ProtectSimulator, SIM_IDS, type SimulatorOptions } from "./protect/simulator.js";
 import { discover, type DiscoveryResult, type DoorMapping } from "./discovery.js";
 import { Store } from "./store/db.js";
+import { AuditRetention } from "./store/retention.js";
 import { Bus } from "./events/bus.js";
 import { LiveDoorService, type DoorService } from "./door/service.js";
 import { HoldService } from "./hold.js";
@@ -32,6 +33,7 @@ export class Instance {
   readonly notifier: Notifier;
   readonly webhook: OutboundWebhook | null;
   readonly members: MembersService;
+  readonly retention: AuditRetention;
   door!: DoorService;
   alerts!: AlertEngine;
   lpr: LprEngine | null = null;
@@ -63,6 +65,7 @@ export class Instance {
         opts.protect ?? new HttpProtectClient({ baseUrl: config.protect.url!, apiKey: config.protect.apiKey!, tls: config.protect.tls, logger });
       this.store = new Store(opts.storeFile ?? join(config.dataDir, "bridge.db"));
     }
+    this.retention = new AuditRetention(this.store, config.audit.retentionDays, this.log);
     this.members = new MembersService(this.store);
     this.members.ensureAdmins(config.bridge.tokens, config.bridge.tokenNames);
     this.hold = new HoldService(this.store, this.bus);
@@ -83,6 +86,7 @@ export class Instance {
 
   async start(): Promise<void> {
     const c = this.config;
+    this.retention.start();
     const explicit: Partial<DoorMapping> = {
       relayId: c.door.relayId,
       outputId: c.door.outputId,
@@ -134,6 +138,7 @@ export class Instance {
   }
 
   async stop(): Promise<void> {
+    this.retention.stop();
     await (this.door as DoorService | undefined)?.stop();
     this.alerts?.stop();
     this.lpr?.stop();

@@ -92,6 +92,41 @@ describe("bridge HTTP API matches packages/contract/bridge.openapi.yaml", () => 
     expect((await app.inject({ method: "GET", url: "/v1/audit?limit=9999", headers: auth })).statusCode).toBe(400);
   });
 
+  it("GET /v1/audit?kind= filters, rejects unknown kinds", async () => {
+    const all = (await app.inject({ method: "GET", url: "/v1/audit?limit=200", headers: auth })).json().entries as { kind: string }[];
+    expect(new Set(all.map((e) => e.kind)).size).toBeGreaterThan(1);
+
+    const commands = (await app.inject({ method: "GET", url: "/v1/audit?kind=command&limit=200", headers: auth })).json().entries as { kind: string }[];
+    expect(commands.length).toBeGreaterThan(0);
+    expect(commands.every((e) => e.kind === "command")).toBe(true);
+    for (const e of commands) expect(v.validate("AuditEntry", e)).toEqual({ ok: true });
+
+    const two = (await app.inject({ method: "GET", url: "/v1/audit?kind=command,mock&limit=200", headers: auth })).json().entries as { kind: string }[];
+    expect(two.every((e) => e.kind === "command" || e.kind === "mock")).toBe(true);
+    expect(two.length).toBeGreaterThanOrEqual(commands.length);
+
+    const bad = await app.inject({ method: "GET", url: "/v1/audit?kind=nope", headers: auth });
+    expect(bad.statusCode).toBe(400);
+    expect(v.validate("Error", bad.json())).toEqual({ ok: true });
+  });
+
+  it("GET /v1/audit.csv → text/csv attachment honouring limit and kind", async () => {
+    const r = await app.inject({ method: "GET", url: "/v1/audit.csv?limit=3", headers: auth });
+    expect(r.statusCode).toBe(200);
+    expect(r.headers["content-type"]).toContain("text/csv");
+    expect(r.headers["content-disposition"]).toMatch(/attachment; filename="garage-activity-\d{4}-\d{2}-\d{2}\.csv"/);
+    const lines = r.body.trimEnd().split("\r\n");
+    expect(lines[0]).toBe("id,at,kind,source,member,command,from,to,outcome,detail");
+    expect(lines).toHaveLength(4); // header + 3 rows
+
+    const filtered = await app.inject({ method: "GET", url: "/v1/audit.csv?kind=command&limit=5", headers: auth });
+    for (const line of filtered.body.trimEnd().split("\r\n").slice(1)) expect(line.split(",")[2]).toBe("command");
+
+    expect((await app.inject({ method: "GET", url: "/v1/audit.csv?limit=99999", headers: auth })).statusCode).toBe(400);
+    expect((await app.inject({ method: "GET", url: "/v1/audit.csv?kind=nope", headers: auth })).statusCode).toBe(400);
+    expect((await app.inject({ method: "GET", url: "/v1/audit.csv" })).statusCode).toBe(401);
+  });
+
   it("GET /v1/discovery → Discovery", async () => {
     const r = await app.inject({ method: "GET", url: "/v1/discovery", headers: auth });
     expect(r.statusCode).toBe(200);

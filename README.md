@@ -47,6 +47,7 @@ Environment variables (or the same keys nested in `CONFIG_FILE` YAML; env wins):
 | `CONFIG_FILE` | — | optional YAML with the same keys nested (`door.travelSeconds`); env wins |
 | `EVENTS_WEBHOOK_URL`, `EVENTS_WEBHOOK_SECRET` | — | outbound events, `X-Garage-Signature: sha256=<HMAC hex of body>` |
 | `DATA_DIR` | `./data` | SQLite audit log + state (`bridge.db`) |
+| `AUDIT_RETENTION_DAYS` | `0` | Prune audit rows older than N days (at start, then daily); `0` keeps everything |
 | `HOST`, `PORT`, `LOG_LEVEL`, `LOG_PRETTY`, `VALIDATE_RESPONSES` | `0.0.0.0`, `8787`, `info`, `false`, `false` | |
 
 ## HTTP API
@@ -62,7 +63,8 @@ Spec: `packages/contract/bridge.openapi.yaml` (the server validates bodies with 
 | `POST /v1/auto-actions/{id}/undo` | reverse an LPR auto-action within its 60 s window (`autoActionId` from the alert); 404 `undo_expired` afterwards |
 | `POST /v1/hold {minutes}` / `DELETE /v1/hold` | hold-open suppresses every alert rule |
 | `GET /v1/events` | SSE: `state`, `command`, `alert`, `hold`, `vehicle`, `heartbeat` (token via header or `?token=`) |
-| `GET /v1/audit?limit&before` | newest-first audit log |
+| `GET /v1/audit?limit&before&kind` | newest-first audit log; `kind` is a comma list (`command,alert`) |
+| `GET /v1/audit.csv?limit&before&kind` | the same rows as a CSV attachment |
 | `GET /v1/discovery` | relays / sensors / cameras + suggested and current mapping |
 | `POST /v1/invites` (admin) · `POST /v1/invites/{code}/claim` (no auth, 5/min/IP) · `GET /v1/members` · `DELETE /v1/members/{id}` | family onboarding: one-time 15 min invite codes → `garageopener://join` link → per-phone member tokens (SHA-256 at rest); members cannot invite (403); audit rows carry the member name |
 | `POST|GET /v1/webhooks/alarm-manager/{secret}` | Alarm Manager target; thumbnails discarded; wrong secret → 404 |

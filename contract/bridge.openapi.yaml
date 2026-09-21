@@ -179,6 +179,10 @@ paths:
           in: query
           description: Return entries with id lower than this
           schema: { type: integer }
+        - name: kind
+          in: query
+          description: Comma-separated audit kinds to include; omit for all
+          schema: { type: string, example: "command,alert" }
       responses:
         "200":
           description: OK
@@ -191,6 +195,32 @@ paths:
                   entries:
                     type: array
                     items: { $ref: "#/components/schemas/AuditEntry" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/audit.csv:
+    get:
+      tags: [audit]
+      operationId: exportAuditCsv
+      summary: The same log as a CSV download (spreadsheet export, curl-friendly)
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 20000, default: 5000 }
+        - name: before
+          in: query
+          description: Return entries with id lower than this
+          schema: { type: integer }
+        - name: kind
+          in: query
+          description: Comma-separated audit kinds to include; omit for all
+          schema: { type: string, example: "command,alert" }
+      responses:
+        "200":
+          description: "CSV with a header row: id,at,kind,source,member,command,from,to,outcome,detail"
+          content:
+            text/csv:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
   /v1/discovery:
     get:

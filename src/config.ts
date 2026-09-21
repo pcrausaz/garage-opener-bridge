@@ -63,6 +63,8 @@ export const ConfigSchema = z.object({
       vehicleDoorOpenMinutes: int.default(5),
     })
     .prefault({}),
+  /** `retentionDays: 0` keeps the audit log forever (the default); any positive value prunes daily. */
+  audit: z.object({ retentionDays: int.default(0) }).prefault({}),
   features: z.object({ lpr: bool.default(false) }).prefault({}),
   lpr: z.object({ knownPlates: list.default([]), departGraceMinutes: int.default(3), undoSeconds: int.default(60) }).prefault({}),
   ntfy: z.object({ url: z.string().url().optional(), topic: z.string().optional(), token: z.string().optional() }).prefault({}),
@@ -109,6 +111,7 @@ export const ENV_MAP: Record<string, string> = {
   ALERT_NIGHTLY_AUTOCLOSE: "alerts.nightlyAutoclose",
   ALERT_VEHICLE_GRACE_SECONDS: "alerts.vehicleGraceSeconds",
   ALERT_VEHICLE_DOOR_OPEN_MINUTES: "alerts.vehicleDoorOpenMinutes",
+  AUDIT_RETENTION_DAYS: "audit.retentionDays",
   FEATURES_LPR: "features.lpr",
   LPR_KNOWN_PLATES: "lpr.knownPlates",
   LPR_DEPART_GRACE_MINUTES: "lpr.departGraceMinutes",
