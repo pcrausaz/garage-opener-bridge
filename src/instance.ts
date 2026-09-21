@@ -233,7 +233,9 @@ export class Instance {
         this.sim.reset();
         this.hold.clear("mock");
         this.vehicle.force(false, at);
-        await this.door.refresh();
+        // settle(), not refresh(): a reset during travel must also drop the in-flight command, or the door
+        // stays OPENING and the abandoned deadline declares it STUCK on an already-closed simulator.
+        await this.door.settle();
         this.store.audit({ kind: "mock", source: "mock", outcome: "ok", detail: "reset" });
         break;
       default:

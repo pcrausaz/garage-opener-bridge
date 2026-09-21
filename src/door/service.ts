@@ -44,6 +44,13 @@ export interface DoorService {
   /** External sensor edge (Alarm Manager webhook). */
   applySensorEvent(isOpened: boolean, at: number): void;
   refresh(): Promise<void>;
+  /**
+   * Abandon any in-flight command and re-derive the door state from the sensor as it reads right now.
+   * `refresh()` cannot do this: the state machine deliberately ignores sensor edges while a command is
+   * travelling and lets the deadline decide. Used by the mock `reset`, and the recovery any caller needs
+   * when the world changed underneath a command that is still counting down.
+   */
+  settle(): Promise<void>;
   start(): Promise<void>;
   stop(): Promise<void>;
 }
@@ -71,6 +78,8 @@ export class LiveDoorService implements DoorService {
   private pollTimer: NodeJS.Timeout | null = null;
   private deadlineTimer: NodeJS.Timeout | null = null;
   private inflight: Promise<CommandResult> | null = null;
+  /** The command counting down right now, so `settle()` can answer its caller instead of leaving it hanging. */
+  private pending: { command: DoorCommand; from: DoorState; startedAt: number; auditId: number; resolve: (r: CommandResult) => void } | null = null;
   private busy = false;
   private running = false;
   private polling: Promise<void> | null = null;
@@ -193,6 +202,28 @@ export class LiveDoorService implements DoorService {
     if (this.polling) await this.polling.catch(() => undefined);
   }
 
+  async settle(): Promise<void> {
+    if (this.deadlineTimer) clearTimeout(this.deadlineTimer);
+    this.deadlineTimer = null;
+    this.busy = false;
+    this.inflight = null;
+    const pending = this.pending;
+    this.pending = null;
+    // Drop `moving` before re-reading: while it is set the machine records the contact but keeps the old door
+    // state, so a reset during travel would stay OPENING and then be declared STUCK by the abandoned deadline.
+    this.state = initialDoorState(this.now());
+    await this.refresh();
+    if (pending) {
+      const at = this.now();
+      this.d.store.auditUpdate(pending.auditId, { to: this.state.door, outcome: "rejected", detail: "cancelled before the door was verified" });
+      pending.resolve({
+        ok: false, command: pending.command, from: pending.from, to: this.state.door, pulsed: true, verified: false,
+        auditId: pending.auditId, startedAt: iso(pending.startedAt), finishedAt: iso(at), error: "cancelled",
+      });
+    }
+    this.schedulePoll();
+  }
+
   private schedulePoll(): void {
     if (!this.running) return;
     if (this.pollTimer) clearTimeout(this.pollTimer);
@@ -273,8 +304,10 @@ export class LiveDoorService implements DoorService {
     this.setState(reduce(this.state, { type: "pulse", command, at: pulsedAt, travelMs }));
     this.schedulePoll();
     const done = new Promise<CommandResult>((resolve) => {
+      this.pending = { command, from, startedAt, auditId, resolve };
       this.deadlineTimer = setTimeout(async () => {
         this.deadlineTimer = null;
+        this.pending = null;
         this.busy = false;
         if (!this.running) return;
         await Promise.all([this.refresh(), this.refreshRelay()]);

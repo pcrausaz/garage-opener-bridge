@@ -113,6 +113,29 @@ describe("mock-mode e2e", () => {
     expect(((await (await call("/v1/state", {}, "demo-lpr")).json()) as { door: string }).door).toBe("OPEN");
   });
 
+  it("reset while the door is travelling settles to CLOSED and stays there", async () => {
+    const t = "demo-reset-midtravel";
+    await call("/v1/mock/reset", { method: "POST" }, t);
+    await call("/v1/door/open?wait=false", { method: "POST" }, t);
+    expect(((await (await call("/v1/state", {}, t)).json()) as { door: string }).door).toBe("OPENING");
+    // Reset mid-travel: the state machine ignores sensor edges while `moving` is set, so without a settle the
+    // door stayed OPENING and the pending deadline then declared it STUCK on an already-closed simulator.
+    const reset = (await (await call("/v1/mock/reset", { method: "POST" }, t)).json()) as { door: string };
+    expect(reset.door).toBe("CLOSED");
+    await new Promise((r) => setTimeout(r, 2500)); // past the old deadline (travel + verify)
+    expect(((await (await call("/v1/state", {}, t)).json()) as { door: string }).door).toBe("CLOSED");
+  });
+
+  it("a waiting command is answered when a reset cancels it, never left hanging", async () => {
+    const t = "demo-reset-waiting";
+    await call("/v1/mock/reset", { method: "POST" }, t);
+    const waiting = call("/v1/door/open", { method: "POST" }, t); // wait=true by default
+    await new Promise((r) => setTimeout(r, 200));
+    await call("/v1/mock/reset", { method: "POST" }, t);
+    const r = (await (await waiting).json()) as { ok: boolean; error?: string };
+    expect(r).toMatchObject({ ok: false, error: "cancelled" });
+  });
+
   it("an unknown plate changes nothing (the demo only knows DEMO_PLATE)", async () => {
     await call("/v1/mock/reset", { method: "POST" }, "demo-unknown");
     const s = (await (await call("/v1/mock/plate-seen", { method: "POST", body: JSON.stringify({ plate: "ABC123" }) }, "demo-unknown")).json()) as { door: string };
