@@ -34,7 +34,8 @@ Using Dockhand, Portainer or another stack manager? Paste
 explicitly, so no `.env` file is needed.
 
 You do **not** put an admin token into the app. While no phone has joined, the bridge prints a single-use
-invite link at startup; paste that into the app's Family → Join.
+invite link at startup (`docker logs garage-bridge`). On the app's first screen, tap **Join with an invite** and
+paste it, or open the link on the phone.
 
 ## How it fits together
 

@@ -12,8 +12,6 @@ to start with a message that names the fix rather than running in a degraded sta
 
 ## Unreleased
 
-Self-hosting files only; the image is unchanged.
-
 - Fixed: `selfhost/docker-compose.yml` would not start for anyone not using ntfy. The ntfy service required
   `NTFY_BASE_URL` with `:?`, and compose interpolates every service, profile or not. It is now optional.
 - Fixed: the README's quick start copied `.env` to the repository root while the compose file looked for it
@@ -22,6 +20,10 @@ Self-hosting files only; the image is unchanged.
   works pasted into a stack manager (Dockhand, Portainer) with variables set in the stack. A test keeps it in
   step with the settings the bridge reads. **Action required only if** you keep a copy of the old file and set
   a variable not listed in the new one: it would now be ignored.
+- Fixed: the pairing banner told you to use "Family → Join", which the app does not have. It now says to tap
+  **Join with an invite** on the first screen, or open the link on the phone. (In the image: needs a release.)
+- Docs: `.env.example` explains that ntfy needs both `NTFY_URL` and `NTFY_TOPIC`, and the user/token step
+  for a self-hosted ntfy.
 - Docs: network requirements and a component diagram in the README; stale `docs/setup/…` references now
   point at https://garageopener.app/self-hosting.
 
