@@ -20,6 +20,9 @@ COPY --from=build --chown=node:node /repo/package.json /app/package.json
 COPY --from=build --chown=node:node /repo/dist /app/dist
 # Read at runtime by src/http/validation.ts (VALIDATE_RESPONSES) and by the contract tests.
 COPY --from=build --chown=node:node /repo/contract /app/contract
+# Apache-2.0 section 4(a): the image is a redistribution of the work, so it carries the licence and the
+# notice. `docker run --rm --entrypoint cat <image> /app/NOTICE` answers.
+COPY --from=build --chown=node:node /repo/LICENSE /repo/NOTICE /app/
 USER node
 VOLUME ["/data"]
 EXPOSE 8787

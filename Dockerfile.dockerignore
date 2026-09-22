@@ -2,11 +2,10 @@
 **/dist
 **/.git
 **/data
-**/*.md
 .env*
-app
-cloud
-deploy
+
+# Not needed to build; LICENSE and NOTICE are deliberately NOT excluded (Apache-2.0 4(a) ships them).
+**/*.md
 docs
-shortcuts
-integrations
+selfhost
+.github

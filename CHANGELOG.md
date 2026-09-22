@@ -10,6 +10,12 @@ This project is pre-1.0, so a minor bump may change behaviour. **Read this file 
 that requires you to touch your configuration is called out under **Action required**, and the bridge refuses
 to start with a message that names the fix rather than running in a degraded state.
 
+## 0.5.1 — 2026-09-21
+
+- Fixed: the image did not carry `LICENSE` and `NOTICE`. Apache-2.0 section 4(a) requires the licence to
+  travel with a redistribution, and the container image is one. Both are now at `/app/`:
+  `docker run --rm --entrypoint cat ghcr.io/pcrausaz/garage-opener-bridge:0.5.1 /app/NOTICE`
+
 ## 0.5.0 — 2026-09-21
 
 First release from the public repository.
