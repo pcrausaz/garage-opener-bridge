@@ -16,7 +16,7 @@ First release from the public repository.
 
 ### Security
 Findings from the review carried out before the image was made public
-(`docs/security-review-2026-09.md`). None was remotely exploitable without a credential; all were weak
+(`docs/security-review.md`). None was remotely exploitable without a credential; all were weak
 defaults a self-hoster would have inherited, or ways to exhaust the process.
 
 - **Admin tokens must now be at least 24 characters**, and obvious values (`changeme`, `garage`, …) or
