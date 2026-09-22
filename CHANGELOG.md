@@ -10,7 +10,9 @@ This project is pre-1.0, so a minor bump may change behaviour. **Read this file 
 that requires you to touch your configuration is called out under **Action required**, and the bridge refuses
 to start with a message that names the fix rather than running in a degraded state.
 
-## Unreleased
+## 0.5.0 — 2026-09-21
+
+First release from the public repository.
 
 ### Security
 Findings from the review carried out before the image was made public
