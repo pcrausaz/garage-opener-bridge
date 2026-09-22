@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question or idea
+    url: https://github.com/pcrausaz/garage-opener-bridge/discussions
+    about: For anything that isn't a defect — ask here rather than opening an issue.
+  - name: Setup guide and FAQ
+    url: https://garageopener.app/self-hosting
+    about: Running the bridge, remote access, certificates, keeping it up to date.
+  - name: Security report
+    url: https://github.com/pcrausaz/garage-opener-bridge/security/policy
+    about: Please report security problems privately, not as a public issue.

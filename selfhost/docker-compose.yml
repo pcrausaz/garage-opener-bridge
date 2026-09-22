@@ -4,8 +4,7 @@
 #   docker compose up -d
 #   curl -s localhost:8787/healthz
 #
-# This file is for *your* deployment. Pascal's own NAS stack lives in deploy/stack/ and the public demo
-# bridge in the liqpil-services-infra repo (ADR-0014); neither is a template for this one.
+# This file is for *your* deployment.
 #
 # Networking — pick one, and read this before you choose:
 #

@@ -1,11 +1,11 @@
 name: bridge-image
 on:
   push:
-    tags: ["bridge-v*"]
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Extra image tag (e.g. rc1). `latest` is only pushed for bridge-v* tags."
+        description: "Extra image tag (e.g. rc1). `latest` is only pushed for v* tags."
         required: false
         default: ""
 permissions:
@@ -29,14 +29,14 @@ jobs:
           images: ghcr.io/${{ github.repository_owner }}/garage-opener-bridge
           tags: |
             type=ref,event=tag
-            type=match,pattern=bridge-v(.*),group=1
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/bridge-v') }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
             type=sha,prefix=sha-
       - uses: docker/build-push-action@v6
         with:
           context: .
-          file: bridge/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

@@ -1,5 +1,5 @@
 {
-  "name": "@garage-opener/bridge",
+  "name": "garage-opener-bridge",
   "version": "0.4.1",
   "private": true,
   "type": "module",
@@ -16,7 +16,8 @@
     "lint": "tsc -p tsconfig.json --noEmit",
     "contract:lint": "redocly lint --config contract/redocly.yaml contract/bridge.openapi.yaml",
     "contract:generate": "openapi-typescript contract/bridge.openapi.yaml -o src/contract.ts",
-    "contract:check": "node scripts/contract-check.mjs"
+    "contract:check": "node scripts/contract-check.mjs",
+    "docker:build": "docker build -t garage-opener-bridge:dev ."
   },
   "dependencies": {
     "@fastify/rate-limit": "^10.3.0",
@@ -39,5 +40,21 @@
     "vitest": "^3.2.4",
     "@redocly/cli": "^2.4.0",
     "openapi-typescript": "^7.13.0"
+  },
+  "description": "Smart garage door bridge for UniFi Protect: verified open/close on a relay and door sensor, alert rules, family invites.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pcrausaz/garage-opener-bridge.git"
+  },
+  "homepage": "https://garageopener.app/self-hosting",
+  "bugs": {
+    "url": "https://github.com/pcrausaz/garage-opener-bridge/issues"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3"
+    ]
   }
 }

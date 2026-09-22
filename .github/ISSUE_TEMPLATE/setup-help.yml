@@ -1,0 +1,46 @@
+name: Setup help
+description: It isn't working yet and you're not sure why
+labels: [question]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Worth two minutes first: https://garageopener.app/faq covers the common ones — Bonjour not finding
+        the bridge, the relay appearing to toggle instead of pulse, and reaching it from outside the house.
+
+        Please redact your API key, bridge tokens and webhook secret.
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Where does it stop?
+      options:
+        - The bridge won't start
+        - The bridge starts but /healthz says ready:false
+        - The app can't find or connect to the bridge
+        - Connected, but the door doesn't move
+        - The door moves but the state is wrong
+        - Alerts don't arrive
+        - Something else
+    validations: { required: true }
+  - type: textarea
+    id: healthz
+    attributes:
+      label: Output of `curl -s http://<bridge-host>:8787/healthz`
+      description: If the bridge won't start, paste the startup logs instead.
+      render: json
+    validations: { required: true }
+  - type: input
+    id: protect
+    attributes:
+      label: Protect version
+    validations: { required: true }
+  - type: input
+    id: hardware
+    attributes:
+      label: Relay and sensor model, and the relay output's configuration
+    validations: { required: true }
+  - type: textarea
+    id: compose
+    attributes:
+      label: Your compose or docker run, with secrets removed
+      render: yaml

@@ -1,0 +1,11 @@
+# secrets / local
+.env
+.env.*
+!.env.example
+.DS_Store
+
+# node
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo

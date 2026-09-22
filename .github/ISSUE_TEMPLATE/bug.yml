@@ -1,0 +1,61 @@
+name: Bug report
+description: Something works differently than it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please redact your API key, bridge tokens and webhook secret before pasting anything.
+        `/healthz` does not contain them; container logs at `LOG_LEVEL=debug` can.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+      description: Rough timestamps help — they can be lined up against the activity log.
+    validations: { required: true }
+  - type: textarea
+    id: healthz
+    attributes:
+      label: Output of `curl -s http://<bridge-host>:8787/healthz`
+      render: json
+    validations: { required: true }
+  - type: input
+    id: protect
+    attributes:
+      label: Protect version
+      description: Console → Settings → System, or `applicationVersion` in the healthz output above.
+    validations: { required: true }
+  - type: input
+    id: hardware
+    attributes:
+      label: Relay and sensor model, and how the relay output is configured
+      placeholder: "USL-Relay, output 1 set to Pulse (1000 ms); UP-Sense mounted as Garage"
+    validations: { required: true }
+  - type: input
+    id: app
+    attributes:
+      label: App version, if the app is involved
+      description: In the app's Settings, at the bottom. Write "not using the app" if not.
+  - type: dropdown
+    id: exposure
+    attributes:
+      label: How is the bridge reached?
+      options:
+        - LAN only
+        - VPN (WireGuard, Tailscale, …)
+        - Cloudflare Tunnel
+        - Reverse proxy I run
+        - Other
+    validations: { required: true }
+  - type: input
+    id: version
+    attributes:
+      label: Image tag
+      placeholder: "latest, or 0.5.0"
+    validations: { required: true }
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log lines
+      description: "`docker logs garage-bridge | tail -50`. Redact secrets."
+      render: shell

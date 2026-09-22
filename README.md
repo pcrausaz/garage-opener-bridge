@@ -1,82 +1,82 @@
-# garage-opener bridge
+# Garage Opener bridge
 
-Self-hosted bridge between the app and a UniFi Protect console: a USL-Relay output in **Pulse** mode presses the
-opener button, a garage-mounted all-in-one sensor is the **only** source of door state. Ships as one Docker image
-that runs either against a real console (`BRIDGE_MODE=live`) or as an in-memory simulator (`BRIDGE_MODE=mock`,
-used by the public App Review bridge and the app's Demo mode).
+The service behind [**Garage Opener**](https://garageopener.app), a smart garage door built on a UniFi
+Protect relay and a garage-mounted door sensor. It talks to your Protect console, keeps the door state
+machine, serves the iOS app, and runs the alert rules whether or not a phone is awake.
 
-## Running
+**Every command is verified against the door sensor.** The relay is fired, then the sensor is read: *open*
+means the door is open, not that a relay clicked. When the door doesn't do what it was asked, the API says so
+rather than reporting success.
 
-```bash
-# live (NAS): see deploy/stack/garage-opener/docker-compose.yml
-docker run -p 8787:8787 -v garage-data:/data \
-  -e PROTECT_URL=https://192.168.50.1 -e PROTECT_API_KEY=… -e PROTECT_TLS=insecure \
-  -e BRIDGE_TOKENS=$(openssl rand -hex 24) -e WEBHOOK_SECRET=$(openssl rand -hex 16) \
-  -e RELAY_PULSE_MODE=emulated -e RELAY_PULSE_MS=800 \
-  -e TZ=America/Chicago ghcr.io/pcrausaz/garage-opener-bridge:latest
-
-# mock (review bridge / local demo) — the simulator's relay toggles on activate like the real USL-Relay
-docker run -p 8787:8787 -e BRIDGE_MODE=mock ghcr.io/pcrausaz/garage-opener-bridge:latest
-curl -H 'Authorization: Bearer demo-anything' localhost:8787/v1/state
+```
+ghcr.io/pcrausaz/garage-opener-bridge
 ```
 
-## Configuration
+Node 22, TypeScript strict, Fastify, SQLite. Multi-arch (amd64, arm64).
 
-Environment variables (or the same keys nested in `CONFIG_FILE` YAML; env wins):
+## Running it
 
-| Variable | Default | Notes |
-|---|---|---|
-| `BRIDGE_MODE` | `live` | `live` \| `mock` |
-| `PROTECT_URL`, `PROTECT_API_KEY` | — | required in live mode (Protect → Integrations → API key) |
-| `PROTECT_TLS` | `insecure` | `insecure` \| `fingerprint:<sha256>` \| `system` |
-| `BRIDGE_TOKENS` / `BRIDGE_TOKEN_NAMES` | — | comma-separated **admin** tokens (≥ 8 chars) and optional names; required in live mode. Family phones get member tokens via invites |
-| `BONJOUR` | live `true` / mock `false` | advertise `_garage-opener._tcp` (TXT url, version, mode, path, id); needs `network_mode: host` under Docker |
-| `WEBHOOK_SECRET` | — | ≥ 16 chars; Alarm Manager URL is `…/v1/webhooks/alarm-manager/<secret>` |
-| `MOCK_TOKEN_PREFIX` / `MOCK_IDLE_MINUTES` | `demo-` / `60` | mock mode also accepts any token with this prefix (isolated state per token, dropped after the idle minutes) |
-| `DOOR_RELAY_ID`, `DOOR_OUTPUT_ID`, `DOOR_SENSOR_ID` | auto | auto-paired when exactly one pulse output + one garage sensor exist; else required |
-| `DOOR_INTERIOR_CAMERA_ID`, `DOOR_DRIVEWAY_CAMERA_ID` | auto | cameras with vehicle smart detection named *Garage* / *Driveway* |
-| `DOOR_TRAVEL_SECONDS` / `DOOR_VERIFY_AFTER_SECONDS` | `15` / `3` | verification happens after the sum |
-| `RELAY_PULSE_MODE` / `RELAY_PULSE_MS` / `RELAY_RELEASE_MS` | `emulated` / `800` / `300` | Defaults fit the USL-Relay on Protect 7.2.x, where `activate` **toggles** the output (on, then off on the next call): a press is on → wait `RELAY_PULSE_MS` → off, with a release first if the output is already on. Set `native` (one activate) only for hardware whose output really pulses. See ADR-0010. |
-| `POLL_MOVING_MS` / `POLL_IDLE_MS` | `2000` / `15000` | sensor polling |
-| `ALERT_OPEN_TOO_LONG_MINUTES` | `15` | rule 1 |
-| `ALERT_NIGHTLY_TIME` / `ALERT_NIGHTLY_AUTOCLOSE` / `TZ` | `22:00` / `false` / `UTC` | rule 2 |
-| `ALERT_VEHICLE_GRACE_SECONDS` / `ALERT_VEHICLE_DOOR_OPEN_MINUTES` | `120` / `5` | rule 3 (camera heuristic) |
-| `FEATURES_LPR`, `LPR_KNOWN_PLATES`, `LPR_DEPART_GRACE_MINUTES`, `LPR_UNDO_SECONDS` | `false`, —, `3`, `60` | LPR engine; inert unless enabled (always on in mock with plate `DEMO123`) |
-| `NTFY_URL`, `NTFY_TOPIC`, `NTFY_TOKEN` | — | ntfy transport; with `PUBLIC_URL` the notification gets *Close now* / *Hold 2h* buttons |
-| `PUBLIC_URL` | — | how phones reach this bridge: ntfy actions, invite links, Bonjour `url` (falls back to request origin / LAN IP) |
-| `CONFIG_FILE` | — | optional YAML with the same keys nested (`door.travelSeconds`); env wins |
-| `EVENTS_WEBHOOK_URL`, `EVENTS_WEBHOOK_SECRET` | — | outbound events, `X-Garage-Signature: sha256=<HMAC hex of body>` |
-| `DATA_DIR` | `./data` | SQLite audit log + state (`bridge.db`) |
-| `AUDIT_RETENTION_DAYS` | `0` | Prune audit rows older than N days (at start, then daily); `0` keeps everything |
-| `HOST`, `PORT`, `LOG_LEVEL`, `LOG_PRETTY`, `VALIDATE_RESPONSES` | `0.0.0.0`, `8787`, `info`, `false`, `false` | |
+Start at **https://garageopener.app/self-hosting** — the full guide, including the Protect API key, the relay
+and sensor setup, certificates and remote access. The short version:
 
-## HTTP API
+```bash
+cp selfhost/.env.example .env    # fill in the five values at the top
+docker compose -f selfhost/docker-compose.yml up -d
+curl -s localhost:8787/healthz
+```
 
-Spec: `contract/bridge.openapi.yaml` (the server validates bodies with it). Bearer auth on `/v1/*`;
-60 req/min per token, door commands 10/min.
+You do **not** put an admin token into the app. While no phone has joined, the bridge prints a single-use
+invite link at startup; paste that into the app's Family → Join.
 
-| Route | Purpose |
+## What it does
+
+| | |
 |---|---|
-| `GET /healthz` | liveness; `ready:false` + `lastError` (and `ok:false`) while live-mode startup is still retrying (2 s → 60 s backoff); API routes answer 503 `protect_unavailable` until ready |
-| `GET /v1/state` | door state machine (`CLOSED OPENING OPEN CLOSING UNKNOWN STUCK`), hold, sensor, relay (record refreshed from the console on every poll; `outputStuck` when the pulse output stays on > max(2 × pulseDuration, 3 s)), vehicle |
-| `POST /v1/door/open|close|toggle?wait=true&source=app` | idempotent, single-flight (409 while moving), verified (`ok:false` + `STUCK` if the sensor never confirms); `ok:false` + `error: relay_output_stuck` with no activation while the relay output is stuck on; `wait=false` → 202 |
-| `POST /v1/auto-actions/{id}/undo` | reverse an LPR auto-action within its 60 s window (`autoActionId` from the alert); 404 `undo_expired` afterwards |
-| `POST /v1/hold {minutes}` / `DELETE /v1/hold` | hold-open suppresses every alert rule |
-| `GET /v1/events` | SSE: `state`, `command`, `alert`, `hold`, `vehicle`, `heartbeat` (token via header or `?token=`) |
-| `GET /v1/audit?limit&before&kind` | newest-first audit log; `kind` is a comma list (`command,alert`) |
-| `GET /v1/audit.csv?limit&before&kind` | the same rows as a CSV attachment |
-| `GET /v1/discovery` | relays / sensors / cameras + suggested and current mapping |
-| `POST /v1/invites` (admin) · `POST /v1/invites/{code}/claim` (no auth, 5/min/IP) · `GET /v1/members` · `DELETE /v1/members/{id}` | family onboarding: one-time 15 min invite codes → `garageopener://join` link → per-phone member tokens (SHA-256 at rest); members cannot invite (403); audit rows carry the member name |
-| `POST|GET /v1/webhooks/alarm-manager/{secret}` | Alarm Manager target; thumbnails discarded; wrong secret → 404 |
-| `POST /v1/mock/{vehicle-arrived,vehicle-left,plate-seen,reverse-next-close,reset}` | simulator controls (mock only) |
+| Door | State machine on the sensor, verified open/close/stop, direction memory for a door stopped part-way |
+| Alerts | Open too long, nightly check, vehicle-in-garage heuristic, hold-open to silence them |
+| Family | One-time invites, per-member tokens, rename and revoke, an activity log that names people |
+| Integrations | Bonjour discovery, Alarm Manager webhooks in, ntfy and HMAC-signed webhooks out, SSE event stream |
+| Mock mode | An in-memory simulator with no console and no credentials, per-token isolated |
 
-Outbound event envelope: `{ id, type, at, data }` with `type` ∈ `door.state door.command alert hold vehicle auto-action`.
+The HTTP API is `contract/bridge.openapi.yaml`. A test diffs it against the routes the server actually
+registers, so the spec cannot quietly fall behind the implementation.
 
-## Tests
+## Development
 
-`pnpm test` (105 tests) runs unit (state machine, rules, LPR, HMAC, config, classifier, members, TLS pinning,
-stuck detector, Bonjour url), integration against a fixture-backed mock Protect server (incl. toggle-relay
-semantics and Protect-down startup), contract tests (every response validated against the OpenAPI, route list
-diffed against the spec), and mock-mode e2e over real HTTP (open→verify, stuck path, SSE, per-token isolation,
-hold suppression, signed outbound events, invite → claim → revoke). `pnpm test:live` runs read-only checks
-against the real console and never activates the relay.
+```bash
+pnpm install
+pnpm test          # OpenAPI lint + generated-types drift check + unit, integration, contract and e2e suites
+pnpm typecheck
+BRIDGE_MODE=mock BRIDGE_TOKENS=demo-token-123 pnpm dev    # mock mode on :8787
+```
+
+`pnpm test:live` runs read-only checks against a real console and is opt-in; it is never run in CI. No test
+touches real hardware.
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). Changes to the API mean editing the spec and running
+`pnpm contract:generate`.
+
+## Security
+
+A review was carried out before this repository was published:
+[`docs/security-review.md`](docs/security-review.md). It is published in full, including what was accepted
+rather than fixed. Reporting: [`SECURITY.md`](SECURITY.md).
+
+Two things matter most if you run this: **generate `BRIDGE_TOKENS`** (it opens your garage door), and **don't
+port-forward the bridge** — use a VPN, tunnel or reverse proxy.
+
+## What isn't here
+
+The **iOS and watchOS app** is closed source. The **cloud-alerts service** is too: it holds no credential to
+anyone's console, cannot actuate anything, and nobody can self-host it, since pushes need the app's APNs key.
+What it stores is set out at https://garageopener.app/privacy.
+
+Out of scope by design: more than one door per bridge, relays other than UniFi Protect's, Home Assistant.
+
+## Licence
+
+[Apache-2.0](LICENSE). Please read [`NOTICE`](NOTICE): the code is free to fork and redistribute, the name
+**Garage Opener**, the icon and `garageopener.app` are not.
+
+"UniFi" and "UniFi Protect" are trademarks of Ubiquiti Inc. This project is not affiliated with, endorsed by
+or sponsored by Ubiquiti.
