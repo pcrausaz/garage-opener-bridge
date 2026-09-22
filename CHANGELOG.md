@@ -10,6 +10,21 @@ This project is pre-1.0, so a minor bump may change behaviour. **Read this file 
 that requires you to touch your configuration is called out under **Action required**, and the bridge refuses
 to start with a message that names the fix rather than running in a degraded state.
 
+## Unreleased
+
+Self-hosting files only; the image is unchanged.
+
+- Fixed: `selfhost/docker-compose.yml` would not start for anyone not using ntfy. The ntfy service required
+  `NTFY_BASE_URL` with `:?`, and compose interpolates every service, profile or not. It is now optional.
+- Fixed: the README's quick start copied `.env` to the repository root while the compose file looked for it
+  beside itself. The quick start now downloads both files into one directory.
+- Changed: the reference compose lists every setting under `environment:` and no longer uses `env_file`, so it
+  works pasted into a stack manager (Dockhand, Portainer) with variables set in the stack. A test keeps it in
+  step with the settings the bridge reads. **Action required only if** you keep a copy of the old file and set
+  a variable not listed in the new one: it would now be ignored.
+- Docs: network requirements and a component diagram in the README; stale `docs/setup/…` references now
+  point at https://garageopener.app/self-hosting.
+
 ## 0.5.1 — 2026-09-21
 
 - Fixed: the image did not carry `LICENSE` and `NOTICE`. Apache-2.0 section 4(a) requires the licence to

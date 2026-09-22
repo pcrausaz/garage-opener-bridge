@@ -1,10 +1,21 @@
 # Garage Opener bridge — self-hosting reference (https://garageopener.app/self-hosting)
 #
-#   cp .env.example .env    # then fill it in; see the comments there
+#   mkdir garage-bridge && cd garage-bridge
+#   curl -fsSLO https://raw.githubusercontent.com/pcrausaz/garage-opener-bridge/main/selfhost/docker-compose.yml
+#   curl -fsSL  https://raw.githubusercontent.com/pcrausaz/garage-opener-bridge/main/selfhost/.env.example -o .env
+#   # fill in .env, then:
 #   docker compose up -d
 #   curl -s localhost:8787/healthz
 #
-# This file is for *your* deployment.
+# Configuration: every setting the bridge reads is listed under `environment:` below and interpolated from
+# variables, so the same file works two ways:
+#   - docker compose on a command line: put the values in a `.env` file NEXT TO THIS FILE (compose reads it
+#     automatically for interpolation);
+#   - a stack manager (Dockhand, Portainer, Komodo…): paste the file as the stack and set the same variables
+#     in the stack's environment. No `.env` file is needed there.
+# The four `:?` variables are required; compose refuses to start without them and says which one is missing.
+# Everything else defaults to empty, which means "use the bridge's built-in default" (see .env.example).
+# A variable you set that is NOT listed here never reaches the bridge, so add it below if you need a new one.
 #
 # Networking — pick one, and read this before you choose:
 #
@@ -14,29 +25,80 @@
 #     hand. Linux only; on Docker Desktop for macOS/Windows host networking does not do what you want.
 #
 #   ports: ["8787:8787"]  (uncomment the `ports` block and delete `network_mode: host`)
-#     Works everywhere. Set BONJOUR=false so the bridge does not advertise a service nobody can reach,
-#     and pair by typing the address.
+#     Works everywhere. Set BONJOUR=false so the bridge does not advertise a service nobody can reach, pair by
+#     typing the address, and set PUBLIC_URL=http://<host-lan-ip>:8787: without host networking the bridge
+#     only sees its container address, and invite links would carry that instead.
 #
-# The `ntfy` service is optional and off by default — start it with `--profile ntfy`. It is a second way
-# to get alerts on top of the app's own notifications; you do not need it.
+# The `ntfy` service is optional and off by default — start it with `--profile ntfy`. It is what delivers
+# alerts to a phone that is asleep or away from home; without it the app raises alerts only while it is
+# running or refreshing in the background.
 
 services:
   bridge:
     # `latest` is the default (ADR-0019): Docker never updates a container on its own, so this just means
-    # "the current release, next time you pull". Set GARAGE_BRIDGE_TAG=X.Y.Z in .env to pin instead, which
-    # you should do if anything auto-pulls for you (Watchtower and friends).
+    # "the current release, next time you pull". Set GARAGE_BRIDGE_TAG=X.Y.Z to pin instead, which you should
+    # do if anything auto-pulls for you (Watchtower and friends).
     image: ghcr.io/pcrausaz/garage-opener-bridge:${GARAGE_BRIDGE_TAG:-latest}
     container_name: garage-bridge
     restart: unless-stopped
     network_mode: host
     # ports:
     #   - "8787:8787"
-    env_file: .env
     environment:
       BRIDGE_MODE: live
       PORT: ${PORT:-8787}
       DATA_DIR: /data
+      TZ: ${TZ:-UTC}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Required
+      PROTECT_URL: ${PROTECT_URL:?set PROTECT_URL, e.g. https://192.168.1.1}
+      PROTECT_API_KEY: ${PROTECT_API_KEY:?set PROTECT_API_KEY (Protect → Settings → Control Plane → Integrations)}
+      BRIDGE_TOKENS: ${BRIDGE_TOKENS:?set BRIDGE_TOKENS to the output of `openssl rand -hex 24`}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:?set WEBHOOK_SECRET to the output of `openssl rand -hex 24`}
+      # Strongly recommended
+      PROTECT_TLS: ${PROTECT_TLS:-insecure}
+      # Optional: reaching the bridge
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      TRUST_PROXY: ${TRUST_PROXY:-}
+      BONJOUR: ${BONJOUR:-}
+      BRIDGE_TOKEN_NAMES: ${BRIDGE_TOKEN_NAMES:-}
+      # Optional: door mapping (auto-discovered when there is exactly one garage relay output and one garage sensor)
+      DOOR_RELAY_ID: ${DOOR_RELAY_ID:-}
+      DOOR_OUTPUT_ID: ${DOOR_OUTPUT_ID:-}
+      DOOR_SENSOR_ID: ${DOOR_SENSOR_ID:-}
+      DOOR_INTERIOR_CAMERA_ID: ${DOOR_INTERIOR_CAMERA_ID:-}
+      DOOR_DRIVEWAY_CAMERA_ID: ${DOOR_DRIVEWAY_CAMERA_ID:-}
+      DOOR_TRAVEL_SECONDS: ${DOOR_TRAVEL_SECONDS:-}
+      DOOR_VERIFY_AFTER_SECONDS: ${DOOR_VERIFY_AFTER_SECONDS:-}
+      # Optional: relay press (emulated is right for the USL-Relay on Protect 7.2.x)
+      RELAY_PULSE_MODE: ${RELAY_PULSE_MODE:-}
+      RELAY_PULSE_MS: ${RELAY_PULSE_MS:-}
+      RELAY_RELEASE_MS: ${RELAY_RELEASE_MS:-}
+      # Optional: alert rules
+      ALERT_OPEN_TOO_LONG_MINUTES: ${ALERT_OPEN_TOO_LONG_MINUTES:-}
+      ALERT_NIGHTLY_TIME: ${ALERT_NIGHTLY_TIME:-}
+      ALERT_NIGHTLY_AUTOCLOSE: ${ALERT_NIGHTLY_AUTOCLOSE:-}
+      ALERT_VEHICLE_GRACE_SECONDS: ${ALERT_VEHICLE_GRACE_SECONDS:-}
+      ALERT_VEHICLE_DOOR_OPEN_MINUTES: ${ALERT_VEHICLE_DOOR_OPEN_MINUTES:-}
+      AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-}
+      SSE_MAX_PER_TOKEN: ${SSE_MAX_PER_TOKEN:-}
+      SSE_MAX_TOTAL: ${SSE_MAX_TOTAL:-}
+      FEATURES_LPR: ${FEATURES_LPR:-}
+      LPR_KNOWN_PLATES: ${LPR_KNOWN_PLATES:-}
+      LPR_DEPART_GRACE_MINUTES: ${LPR_DEPART_GRACE_MINUTES:-}
+      LPR_UNDO_SECONDS: ${LPR_UNDO_SECONDS:-}
+      POLL_MOVING_MS: ${POLL_MOVING_MS:-}
+      POLL_IDLE_MS: ${POLL_IDLE_MS:-}
+      PAIRING_BANNER: ${PAIRING_BANNER:-}
+      # Optional: push alerts through ntfy (the `ntfy` profile below, or ntfy.sh)
+      NTFY_URL: ${NTFY_URL:-}
+      NTFY_TOPIC: ${NTFY_TOPIC:-}
+      NTFY_TOKEN: ${NTFY_TOKEN:-}
+      # Optional: HMAC-signed events out to your own automations
+      EVENTS_WEBHOOK_URL: ${EVENTS_WEBHOOK_URL:-}
+      EVENTS_WEBHOOK_SECRET: ${EVENTS_WEBHOOK_SECRET:-}
     volumes:
+      # Members, invites and the activity log live here. Back this volume up: losing it unpairs every phone.
       - garage-bridge-data:/data
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:'+(process.env.PORT||8787)+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
@@ -56,7 +118,9 @@ services:
       - "${NTFY_PORT:-8788}:80"
     environment:
       TZ: ${TZ:-UTC}
-      NTFY_BASE_URL: ${NTFY_BASE_URL:?set NTFY_BASE_URL when using the ntfy profile}
+      # The address your phone reaches ntfy at, e.g. http://192.168.1.10:8788. Not `:?`: compose interpolates
+      # every service, profile or not, so a required value here would stop the bridge starting without ntfy.
+      NTFY_BASE_URL: ${NTFY_BASE_URL:-}
       NTFY_LISTEN_HTTP: ":80"
       NTFY_CACHE_FILE: /var/cache/ntfy/cache.db
       NTFY_CACHE_DURATION: 24h

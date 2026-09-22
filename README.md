@@ -20,13 +20,54 @@ Start at **https://garageopener.app/self-hosting** — the full guide, including
 and sensor setup, certificates and remote access. The short version:
 
 ```bash
-cp selfhost/.env.example .env    # fill in the five values at the top
-docker compose -f selfhost/docker-compose.yml up -d
+mkdir garage-bridge && cd garage-bridge
+curl -fsSLO https://raw.githubusercontent.com/pcrausaz/garage-opener-bridge/main/selfhost/docker-compose.yml
+curl -fsSL  https://raw.githubusercontent.com/pcrausaz/garage-opener-bridge/main/selfhost/.env.example -o .env
+# fill in the required values in .env (generate secrets with `openssl rand -hex 24`), then:
+docker compose up -d
 curl -s localhost:8787/healthz
 ```
 
+Using Dockhand, Portainer or another stack manager? Paste
+[`selfhost/docker-compose.yml`](selfhost/docker-compose.yml) as the stack and set the variables from
+[`selfhost/.env.example`](selfhost/.env.example) in the stack's environment; the compose lists every setting
+explicitly, so no `.env` file is needed.
+
 You do **not** put an admin token into the app. While no phone has joined, the bridge prints a single-use
 invite link at startup; paste that into the app's Family → Join.
+
+## How it fits together
+
+```mermaid
+flowchart LR
+  subgraph home[Your network]
+    relay[Protect relay] --- console[Protect console]
+    sensor[Door sensor] --- console
+    bridge[Bridge container<br/>:8787]
+    bridge -- "HTTPS :443<br/>API key" --> console
+    console -- "Alarm Manager webhook<br/>HTTP :8787" --> bridge
+  end
+  phone[iPhone / Watch] -- "HTTP :8787<br/>bearer token" --> bridge
+  bridge -. "optional push" .-> ntfy[ntfy]
+  ntfy -.-> phone
+```
+
+With a bridge, it is the only thing that talks to the console, and the app talks only to the bridge. Nothing here
+calls a Garage Opener cloud service; the optional cloud alerts are for setups *without* a bridge.
+
+## Network requirements
+
+| From | To | Port / protocol | Needed for | Required |
+|---|---|---|---|---|
+| Bridge host | Protect console | TCP 443, HTTPS | Polling the sensor, pressing the relay | Always |
+| Protect console | Bridge host | TCP 8787, HTTP | Alarm Manager webhooks: instant door updates | Recommended (the bridge polls anyway) |
+| Phone | Bridge host | TCP 8787, HTTP (REST + a long-lived event stream) | The app, widgets, Watch, Shortcuts | Always: on the LAN, or over a VPN or tunnel away from home |
+| Phone | Bridge host | UDP 5353, mDNS `_garage-opener._tcp` | Finding the bridge without typing its address | Optional; needs host networking, and does not cross VLANs without an mDNS reflector |
+| Bridge host | your ntfy server or ntfy.sh | HTTP(S) | Push alerts to a phone that is asleep or away | Optional |
+| Bridge host | `ghcr.io` | TCP 443 | Pulling the image | At install and update |
+
+If the bridge host and the console are on different VLANs, the firewall must allow both directions above:
+bridge → console on 443, and console → bridge on 8787. Never forward a port from the internet to the bridge.
 
 ## What it does
 

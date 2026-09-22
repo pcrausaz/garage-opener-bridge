@@ -236,7 +236,7 @@ export function validateMode(cfg: Config): void {
       if (host && !isLanHost(host)) {
         throw new Error(
           `PROTECT_TLS=insecure is refused for the non-LAN host ${host}: the Protect API key would be exposed to anyone on the path. ` +
-            "Use PROTECT_TLS=fingerprint:<sha256> (see docs/setup/protect-api-key.md) or PROTECT_TLS=system.",
+            "Use PROTECT_TLS=fingerprint:<sha256> (see https://garageopener.app/self-hosting#certs) or PROTECT_TLS=system.",
         );
       }
     }
