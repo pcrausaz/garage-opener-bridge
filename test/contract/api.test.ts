@@ -37,6 +37,22 @@ describe("bridge HTTP API matches contract/bridge.openapi.yaml", () => {
     expect(v.validate("Health", r.json())).toEqual({ ok: true });
   });
 
+  it("/healthz stays compact JSON, because external monitors substring-match it", async () => {
+    // Two uptime monitors key on the literal `"mode":"mock"` appearing in the body. That only works while
+    // the response is serialised compactly: a switch to JSON.stringify(x, null, 2), or any middleware that
+    // reformats, inserts a space after the colon and both monitors go red at once — presenting as an outage
+    // of the demo bridge on both hostnames simultaneously, which is a long way from "someone changed a
+    // serialiser". Fastify's default is compact; this asserts it rather than relying on it.
+    //
+    // This pins a formatting detail, which is not something a contract should normally do. It can be deleted
+    // once the monitors move to a JSON-parsing check (uptime-kuma's "HTTP(s) - Json Query" type), which is
+    // immune to both formatting and key order — that is the better fix and has been proposed.
+    const r = await app.inject({ method: "GET", url: "/healthz" });
+    expect(r.body).toContain('"mode":"mock"');
+    expect(r.body).not.toMatch(/"mode"\s*:\s+/);
+    expect(r.body.trim()).toBe(r.body.trim().replace(/\n\s*/g, ""));
+  });
+
   it("401 → Error", async () => {
     const r = await app.inject({ method: "GET", url: "/v1/state" });
     expect(r.statusCode).toBe(401);
