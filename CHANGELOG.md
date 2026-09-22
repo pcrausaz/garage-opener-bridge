@@ -2,10 +2,13 @@
 
 Image: `ghcr.io/pcrausaz/garage-opener-bridge`. The version is reported by `GET /healthz`.
 
-**Pin a version.** `latest` is this project's development tag and moves without notice; `X.Y.Z` does not.
+`latest` is the default for self-hosters (ADR-0019). Docker never updates a running container on its own, so
+it means "the current release, the next time you pull". Pin an exact `X.Y.Z` if you want upgrades to be a
+decision rather than a side effect of pulling, and **do** pin if anything auto-pulls for you.
 
-This project is pre-1.0, so a minor bump may change behaviour. Anything that requires you to touch your
-configuration is called out under **Action required**.
+This project is pre-1.0, so a minor bump may change behaviour. **Read this file before you pull.** Anything
+that requires you to touch your configuration is called out under **Action required**, and the bridge refuses
+to start with a message that names the fix rather than running in a degraded state.
 
 ## Unreleased
 

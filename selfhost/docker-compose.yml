@@ -23,8 +23,10 @@
 
 services:
   bridge:
-    # Pin a version. `latest` is this project's development tag and can move under you.
-    image: ghcr.io/pcrausaz/garage-opener-bridge:${GARAGE_BRIDGE_TAG:?set GARAGE_BRIDGE_TAG, e.g. 0.4.1}
+    # `latest` is the default (ADR-0019): Docker never updates a container on its own, so this just means
+    # "the current release, next time you pull". Set GARAGE_BRIDGE_TAG=X.Y.Z in .env to pin instead, which
+    # you should do if anything auto-pulls for you (Watchtower and friends).
+    image: ghcr.io/pcrausaz/garage-opener-bridge:${GARAGE_BRIDGE_TAG:-latest}
     container_name: garage-bridge
     restart: unless-stopped
     network_mode: host
