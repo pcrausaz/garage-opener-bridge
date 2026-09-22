@@ -6,7 +6,7 @@ import { mockConfig } from "../helpers.js";
 import { silentLogger } from "../../src/logger.js";
 
 /** Every response body is validated against the OpenAPI component named for the operation. */
-describe("bridge HTTP API matches packages/contract/bridge.openapi.yaml", () => {
+describe("bridge HTTP API matches contract/bridge.openapi.yaml", () => {
   let app: BridgeServer;
   let registry: MockRegistry;
   const v = new ContractValidator();

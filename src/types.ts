@@ -1,4 +1,4 @@
-import type { components } from "@garage-opener/contract/bridge";
+import type { components } from "./contract.js";
 
 export type Schemas = components["schemas"];
 export type DoorState = Schemas["DoorState"];

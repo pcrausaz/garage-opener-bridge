@@ -1,0 +1,7 @@
+extends:
+  - recommended
+rules:
+  operation-4xx-response: off
+  no-unused-components: error
+  operation-operationId: error
+  operation-summary: error

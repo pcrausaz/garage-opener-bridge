@@ -5,13 +5,11 @@ FROM node:22-bookworm-slim AS build
 RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 WORKDIR /repo
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json ./
-COPY packages/contract/package.json packages/contract/
 COPY bridge/package.json bridge/
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
-RUN pnpm install --frozen-lockfile --filter @garage-opener/bridge... 
-COPY packages/contract packages/contract
+RUN pnpm install --frozen-lockfile --filter @garage-opener/bridge...
 COPY bridge bridge
-RUN pnpm --filter @garage-opener/contract generate && pnpm --filter @garage-opener/bridge build \
+RUN pnpm --filter @garage-opener/bridge build \
  && pnpm --filter @garage-opener/bridge --prod deploy --legacy /out
 
 FROM node:22-bookworm-slim AS runtime
@@ -21,6 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf 
 WORKDIR /app
 COPY --from=build --chown=node:node /out /app
 COPY --from=build --chown=node:node /repo/bridge/dist /app/dist
+# Read at runtime by src/http/validation.ts (VALIDATE_RESPONSES) and by the contract tests.
+COPY --from=build --chown=node:node /repo/bridge/contract /app/contract
 USER node
 VOLUME ["/data"]
 EXPOSE 8787

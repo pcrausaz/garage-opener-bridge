@@ -20,7 +20,7 @@ function env(): { url: string; key: string } {
   } catch {
     /* no .env */
   }
-  return { url: e.PROTECT_URL ?? "https://192.168.50.1", key: e.PROTECT_API_KEY ?? "" };
+  return { url: e.PROTECT_URL ?? "https://192.168.1.1", key: e.PROTECT_API_KEY ?? "" };
 }
 
 describe.skipIf(!enabled)("live Protect console (read-only)", () => {
@@ -35,18 +35,22 @@ describe.skipIf(!enabled)("live Protect console (read-only)", () => {
   it("lists the garage sensor and relay with the documented ids", async () => {
     const sensors = await client.getSensors();
     const garage = sensors.find((s) => s.mountType === "garage");
-    expect(garage?.id).toBe("6609938d012d0803e408748d");
+    expect(garage?.id).toBe(process.env.DOOR_SENSOR_ID ?? "6609938d012d0803e408748d");
     expect(typeof garage?.isOpened).toBe("boolean");
     expect(typeof garage?.openStatusChangedAt).toBe("number");
     const relays = await client.getRelays();
-    const relay = relays.find((r) => r.id === "6aa43ec903253903e401d542");
+    const relay = relays.find((r) => r.id === (process.env.DOOR_RELAY_ID ?? "6aa43ec903253903e401d542"));
     expect(relay?.outputs.find((o) => o.id === 0)?.type).toBe("garageDoor");
   });
 
   it("auto-pairs to the documented mapping", async () => {
     const d = await discover(client, null, {});
     expect(d.autoPaired).toBe(true);
-    expect(d.current).toMatchObject({ relayId: "6aa43ec903253903e401d542", outputId: 0, sensorId: "6609938d012d0803e408748d" });
+    expect(d.current).toMatchObject({
+      relayId: process.env.DOOR_RELAY_ID ?? "6aa43ec903253903e401d542",
+      outputId: Number(process.env.DOOR_OUTPUT_ID ?? 0),
+      sensorId: process.env.DOOR_SENSOR_ID ?? "6609938d012d0803e408748d",
+    });
   });
 
   it("does not activate anything (guard)", () => {

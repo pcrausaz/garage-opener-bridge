@@ -52,7 +52,7 @@ Environment variables (or the same keys nested in `CONFIG_FILE` YAML; env wins):
 
 ## HTTP API
 
-Spec: `packages/contract/bridge.openapi.yaml` (the server validates bodies with it). Bearer auth on `/v1/*`;
+Spec: `contract/bridge.openapi.yaml` (the server validates bodies with it). Bearer auth on `/v1/*`;
 60 req/min per token, door commands 10/min.
 
 | Route | Purpose |

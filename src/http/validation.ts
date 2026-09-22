@@ -1,10 +1,12 @@
 import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 
-const require = createRequire(import.meta.url);
+/** `contract/` sits beside `src/` in the repo and beside `dist/` in the built image, so one `..` works for both. */
+const CONTRACT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "contract");
 
 export interface OpenApiDoc {
   paths: Record<string, Record<string, unknown>>;
@@ -12,8 +14,7 @@ export interface OpenApiDoc {
 }
 
 export function loadBridgeOpenApi(): OpenApiDoc {
-  const file = require.resolve("@garage-opener/contract/bridge.openapi.yaml");
-  return parse(readFileSync(file, "utf8")) as OpenApiDoc;
+  return parse(readFileSync(join(CONTRACT_DIR, "bridge.openapi.yaml"), "utf8")) as OpenApiDoc;
 }
 
 export class ContractValidator {

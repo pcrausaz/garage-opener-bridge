@@ -1,6 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { Store } from "./store/db.js";
-import type { components } from "@garage-opener/contract/bridge";
+import type { components } from "./contract.js";
 
 export type Member = components["schemas"]["Member"];
 
