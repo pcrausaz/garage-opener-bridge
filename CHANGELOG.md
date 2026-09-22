@@ -10,7 +10,7 @@ This project is pre-1.0, so a minor bump may change behaviour. **Read this file 
 that requires you to touch your configuration is called out under **Action required**, and the bridge refuses
 to start with a message that names the fix rather than running in a degraded state.
 
-## Unreleased
+## 0.5.2 — 2026-09-22
 
 - Fixed: `selfhost/docker-compose.yml` would not start for anyone not using ntfy. The ntfy service required
   `NTFY_BASE_URL` with `:?`, and compose interpolates every service, profile or not. It is now optional.
