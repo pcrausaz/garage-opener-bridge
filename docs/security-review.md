@@ -28,6 +28,7 @@ are graded against that model, not against a single-owner LAN box.
 | B-7 | Low | bridge | SSE bearer token travels in the query string | Accepted, documented |
 | B-8 | Low | bridge | `WEBHOOK_SECRET` travels in the URL path | Accepted, documented |
 | C-3 | Low | cloud | Install existence oracle in `verifySecret` | Accepted |
+| C-5 | Low | cloud | Webhook routing token travels in the URL path | Accepted, forced |
 | B-9 / B-10 / C-4 | Info | both | Unauthenticated `/healthz`, unsalted token hashes, in-memory DO window | Accepted, explained |
 
 Nothing found was remotely exploitable without a credential. The fixed items are all either *weak defaults a
@@ -134,6 +135,36 @@ revocable from the app.
 Same class. Alarm Manager only lets you configure a URL, so the secret has to live in it. It is compared in
 constant time, a miss returns a bare 404 (no oracle), and the route accepts GET, so the URL can also land in
 browser history if someone pastes it. Documented; rotating it means editing one Protect rule.
+
+### C-5 — the webhook routing token is in the URL path (Low)
+*Added 2026-09-22, after the original review missed it.*
+
+`/w/<routingToken>` puts the credential in the path, so it is recorded wherever request paths are — most
+notably Cloudflare's own edge analytics, which is a wider and longer-lived audience than the Worker's logs
+and is readable by anyone holding zone analytics access. Found by the infrastructure side running per-hostname
+path analytics for an unrelated reason, not by this review.
+
+**This is the same finding as B-7 and B-8 on the bridge, and the review should have caught it.** Both of those
+flag a credential travelling in a URL rather than a header; the Worker's equivalent was not examined, which is
+an inconsistency in the review rather than a difference between the components.
+
+What the token permits, and does not: it authorises **posting events** to one install. It cannot read status,
+cannot change settings and cannot erase the install — all of those require the install secret, which travels
+in an `Authorization` header and never appears in a URL. The realistic abuse is injecting events, and the
+worst of those is a forged `closed` for a door that is actually open, which would suppress the very alert the
+service exists to send.
+
+**Accepted because it is forced, not because the risk is negligible.** Protect's Alarm Manager offers a single
+field — a URL. It cannot send a custom header, so a header-borne token would make the service unusable with
+the one integration it exists to serve. This is the identical constraint as B-8's `WEBHOOK_SECRET`.
+
+What genuinely reduces it, in order of value:
+
+- The token is 192 bits of randomness, so the path is not guessable; C-2's per-IP rate limit blunts spraying.
+- Rotation already exists in the product, just not by that name: erasing and re-enabling cloud alerts issues a
+  new token. It costs the user re-pasting two Alarm Manager rules.
+- The paths should be kept out of tickets, documentation and screenshots. That is a handling rule rather than
+  a control, and it is now written down.
 
 ### C-3 — install existence oracle (Low)
 `verifySecret` returns `missing` (→404) for an install that was never created and `unauthorized` (→401) for a
