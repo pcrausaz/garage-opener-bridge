@@ -280,6 +280,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/doors/{doorId}/camera/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A still from one door's interior camera
+         * @description The bridge fetches the picture from the console with its own API key and caches it **per camera**: two
+         *     doors sharing a camera, and every phone, share one upstream fetch. A picture is reused for 2 s while
+         *     any door using that camera is moving and for 10 s otherwise; concurrent requests wait for the same
+         *     fetch. `X-Snapshot-At` is when the bridge captured the picture it is returning.
+         *
+         *     Nothing stale is served on failure: the error says why, and the client keeps showing the picture it
+         *     already has with its time. The media type is whatever the camera produced (`image/jpeg` from a
+         *     console; `image/png` for the drawn illustration in mock mode).
+         */
+        get: operations["getDoorCameraSnapshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/camera/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A still from the interior camera of the caller's default door
+         * @description Same as `GET /v1/doors/{doorId}/camera/snapshot` for the caller's default door.
+         */
+        get: operations["getCameraSnapshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auto-actions/{id}/undo": {
         parameters: {
             query?: never;
@@ -925,6 +972,56 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description The picture */
+        Snapshot: {
+            headers: {
+                /** @description Always `no-store`; the picture is live and must not be cached by the client or a proxy. */
+                "Cache-Control"?: string;
+                /** @description When the bridge captured this picture (ISO 8601). Up to 10 s old, 2 s while the door moves. */
+                "X-Snapshot-At"?: string;
+                [name: string]: unknown;
+            };
+            content: {
+                "image/jpeg": string;
+                "image/png": string;
+            };
+        };
+        /** @description This door has no interior camera mapped (`no_camera`), or there is no such door (`unknown_door`) */
+        NoCamera: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The console refused the bridge's API key for this camera (`camera_forbidden`) */
+        CameraForbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The camera is offline or the console could not be reached (`camera_unavailable`) */
+        CameraUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Too many requests, here or at the console (`rate_limited`); back off */
+        RateLimited: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
     };
     parameters: {
         /** @description Door id from `GET /v1/doors` (`d1`, `d2`, …). */
@@ -1283,6 +1380,43 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["UnknownDoor"];
+        };
+    };
+    getDoorCameraSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Door id from `GET /v1/doors` (`d1`, `d2`, …). */
+                doorId: components["parameters"]["DoorId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["Snapshot"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NoCamera"];
+            429: components["responses"]["RateLimited"];
+            502: components["responses"]["CameraForbidden"];
+            503: components["responses"]["CameraUnavailable"];
+        };
+    };
+    getCameraSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["Snapshot"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NoCamera"];
+            429: components["responses"]["RateLimited"];
+            502: components["responses"]["CameraForbidden"];
+            503: components["responses"]["CameraUnavailable"];
         };
     };
     undoAutoAction: {

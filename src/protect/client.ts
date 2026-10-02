@@ -1,7 +1,7 @@
 import { Agent, buildConnector, request, type Dispatcher } from "undici";
 import type { TLSSocket } from "node:tls";
 import type { Logger } from "../logger.js";
-import { ProtectError, type ProtectCamera, type ProtectClient, type ProtectMetaInfo, type ProtectRelay, type ProtectSensor } from "./types.js";
+import { ProtectError, type ProtectCamera, type ProtectClient, type ProtectMetaInfo, type ProtectRelay, type ProtectSensor, type ProtectSnapshot } from "./types.js";
 
 export interface HttpProtectClientOptions {
   baseUrl: string;
@@ -131,6 +131,33 @@ export class HttpProtectClient implements ProtectClient {
   }
   getCameras(): Promise<ProtectCamera[]> {
     return this.call("GET", "/cameras");
+  }
+  /**
+   * Binary, so it does not go through `call()`. The console's own `cache-control: private, max-age=3600` is
+   * ignored on purpose: the picture is live, and freshness is the snapshot cache's job.
+   */
+  async getCameraSnapshot(id: string): Promise<ProtectSnapshot> {
+    await this.gate.wait();
+    const path = `/cameras/${encodeURIComponent(id)}/snapshot`;
+    const started = Date.now();
+    try {
+      const res = await request(this.base + path, {
+        method: "GET",
+        dispatcher: this.dispatcher,
+        headers: { "x-api-key": this.apiKey, accept: "image/*" },
+        headersTimeout: this.timeoutMs,
+        bodyTimeout: this.timeoutMs,
+      });
+      const body = Buffer.from(await res.body.arrayBuffer());
+      this.log.debug({ method: "GET", path, status: res.statusCode, ms: Date.now() - started, bytes: body.length }, "protect response");
+      if (res.statusCode >= 400) throw new ProtectError(`Protect GET ${path} → ${res.statusCode}`, res.statusCode, body.subarray(0, 4000).toString("utf8"));
+      const type = res.headers["content-type"];
+      return { contentType: (Array.isArray(type) ? type[0] : type) ?? "image/jpeg", body };
+    } catch (err) {
+      if (err instanceof ProtectError) throw err;
+      this.log.debug({ method: "GET", path, err }, "protect request failed");
+      throw new ProtectError(`Protect GET ${path} failed: ${(err as Error).message}`, undefined, err);
+    }
   }
   activateOutput(relayId: string, outputId: number): Promise<unknown> {
     return this.call("POST", `/relays/${encodeURIComponent(relayId)}/outputs/${outputId}/activate`);

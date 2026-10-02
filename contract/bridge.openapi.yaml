@@ -10,7 +10,7 @@ info:
 
     An install has a list of doors (`d1`, `d2`, … by position in the configuration; `GET /v1/doors`). The routes
     under `/v1/doors/{doorId}` address one door. The routes that carry no door id (`/v1/state`, `/v1/door/*`,
-    `/v1/hold`, `/v1/events`, `/v1/mock/*`) are not deprecated: they act on the **caller's
+    `/v1/hold`, `/v1/events`, `/v1/camera/snapshot`, `/v1/mock/*`) are not deprecated: they act on the **caller's
     default door**, which is `d1` until `PUT /v1/doors/default` says otherwise. A one-door install never needs
     anything else, and a bridge older than 0.6 answers `GET /v1/doors` with 404.
 servers:
@@ -23,6 +23,8 @@ tags:
     description: Door state and commands
   - name: doors
     description: The list of doors, and the same commands addressed to one of them
+  - name: camera
+    description: Still pictures from a door's interior camera
   - name: hold
     description: Hold-open flag
   - name: events
@@ -266,6 +268,41 @@ paths:
         "204": { description: "Cleared (also when no hold was active)" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/UnknownDoor" }
+  /v1/doors/{doorId}/camera/snapshot:
+    get:
+      tags: [camera]
+      operationId: getDoorCameraSnapshot
+      summary: A still from one door's interior camera
+      description: |
+        The bridge fetches the picture from the console with its own API key and caches it **per camera**: two
+        doors sharing a camera, and every phone, share one upstream fetch. A picture is reused for 2 s while
+        any door using that camera is moving and for 10 s otherwise; concurrent requests wait for the same
+        fetch. `X-Snapshot-At` is when the bridge captured the picture it is returning.
+
+        Nothing stale is served on failure: the error says why, and the client keeps showing the picture it
+        already has with its time. The media type is whatever the camera produced (`image/jpeg` from a
+        console; `image/png` for the drawn illustration in mock mode).
+      parameters: [{ $ref: "#/components/parameters/DoorId" }]
+      responses:
+        "200": { $ref: "#/components/responses/Snapshot" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NoCamera" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { $ref: "#/components/responses/CameraForbidden" }
+        "503": { $ref: "#/components/responses/CameraUnavailable" }
+  /v1/camera/snapshot:
+    get:
+      tags: [camera]
+      operationId: getCameraSnapshot
+      summary: A still from the interior camera of the caller's default door
+      description: Same as `GET /v1/doors/{doorId}/camera/snapshot` for the caller's default door.
+      responses:
+        "200": { $ref: "#/components/responses/Snapshot" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NoCamera" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { $ref: "#/components/responses/CameraForbidden" }
+        "503": { $ref: "#/components/responses/CameraUnavailable" }
   /v1/auto-actions/{id}/undo:
     post:
       tags: [door]
@@ -671,6 +708,40 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
     UnknownDoor:
       description: No door with this id (`unknown_door`)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Snapshot:
+      description: The picture
+      headers:
+        Cache-Control:
+          description: Always `no-store`; the picture is live and must not be cached by the client or a proxy.
+          schema: { type: string }
+        X-Snapshot-At:
+          description: When the bridge captured this picture (ISO 8601). Up to 10 s old, 2 s while the door moves.
+          schema: { type: string, format: date-time }
+      content:
+        image/jpeg:
+          schema: { type: string, format: binary }
+        image/png:
+          schema: { type: string, format: binary }
+    NoCamera:
+      description: This door has no interior camera mapped (`no_camera`), or there is no such door (`unknown_door`)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    CameraForbidden:
+      description: The console refused the bridge's API key for this camera (`camera_forbidden`)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    CameraUnavailable:
+      description: The camera is offline or the console could not be reached (`camera_unavailable`)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RateLimited:
+      description: Too many requests, here or at the console (`rate_limited`); back off
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }

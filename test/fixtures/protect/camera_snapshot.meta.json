@@ -1,0 +1,43 @@
+{
+  "_note": "Response METADATA for GET /cameras/{id}/snapshot, captured 2026-10-02 on Protect 7.2.105 (G4 Instant). The picture itself is deliberately not stored: this repository is public. Only what was recorded is here; nothing is filled in.",
+  "request": "GET /proxy/protect/integration/v1/cameras/{id}/snapshot",
+  "ok": {
+    "status": 200,
+    "headers": {
+      "content-type": "image/jpeg",
+      "cache-control": "private, max-age=3600"
+    },
+    "image": {
+      "width": 640,
+      "height": 360,
+      "approximateBytes": 33000
+    },
+    "latencyMs": [
+      150,
+      350
+    ]
+  },
+  "highQuality": {
+    "request": "?highQuality=true",
+    "status": 400,
+    "body": {
+      "error": "Camera does not support full HD snapshot",
+      "name": "BAD_REQUEST"
+    }
+  },
+  "highQualityFalse": {
+    "request": "?highQuality=false",
+    "status": 200
+  },
+  "unknownCamera": {
+    "status": 404,
+    "body": {
+      "name": "NOT_FOUND",
+      "entity": "camera"
+    },
+    "bodyNote": "The real body carries more fields; only these two were recorded."
+  },
+  "badApiKey": {
+    "status": 401
+  }
+}

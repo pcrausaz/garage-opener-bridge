@@ -13,8 +13,24 @@ Redacted fields: `mac`, `guid`, `hosts`, `host`. Device ids and names are real.
 | relay_by_id.json | GET /relays/{id} | same shape |
 | cameras.json | GET /cameras | full list; `smartDetectSettings.objectTypes` includes `vehicle` |
 | cameras_garage_driveway.json | filtered | interior "Garage (G4 Instant)" + "Driveway (G5 Dome)" |
+| camera_snapshot.meta.json | GET /cameras/{id}/snapshot | **metadata only**, captured 2026-10-02: status, the headers that matter, error bodies. No picture |
+| synthetic-snapshot.jpg | — | 64×36 colour bars, generated; stands in for the picture in tests. **Not a capture** |
 | nvrs.json | GET /nvrs | UDM-PRO-SE |
 | chimes.json | GET /chimes | unused |
+
+Camera snapshots, captured 2026-10-02 on the same console (Protect 7.2.105, G4 Instant):
+- `GET /cameras/{id}/snapshot` → 200 `image/jpeg`, 640×360, about 33 kB, ~150–350 ms.
+- `?highQuality=true` → **400** `{"error":"Camera does not support full HD snapshot","name":"BAD_REQUEST"}` on
+  this camera; `?highQuality=false` → 200. The bridge never sends the parameter.
+- Unknown camera id → 404 with `"name":"NOT_FOUND","entity":"camera"`; the rest of that body was not recorded.
+  Bad API key → 401.
+- The 200 says `cache-control: private, max-age=3600`. The bridge ignores it: the picture is live.
+- Each call spends one of the key's 10 requests per second, shared with door polling.
+- Not captured: what the console answers for a camera that is offline, or for a key without camera permission.
+  The bridge treats 401/403 as "forbidden" and every other failure as "unavailable".
+
+**No real camera image is ever committed.** This repository is public; a snapshot shows the inside of
+someone's garage. Tests use `synthetic-snapshot.jpg`, and mock mode draws its picture (`src/mock/illustration.ts`).
 
 Observed but not fixtures:
 - Response header `ratelimit-policy: "10-in-1sec"` — the console enforces 10 requests/second per key.

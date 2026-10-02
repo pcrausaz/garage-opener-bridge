@@ -31,7 +31,17 @@ export async function startMockProtect(opts: MockProtectOptions = {}) {
   const cameras = loadFixture<ProtectCamera[]>("cameras.json");
   const meta = loadFixture<{ applicationVersion: string }>("meta_info.json");
   const sensor = sensors[0]!;
-  const state = { sensor, activations: [] as { relayId: string; outputId: number; at: number }[], outputLog: [] as string[], failNext: 0, timers: [] as NodeJS.Timeout[] };
+  const snapshotMeta = loadFixture<{ ok: { headers: Record<string, string> }; highQuality: { status: number; body: unknown }; unknownCamera: { status: number; body: unknown } }>("camera_snapshot.meta.json");
+  const state = {
+    sensor,
+    activations: [] as { relayId: string; outputId: number; at: number }[],
+    outputLog: [] as string[],
+    failNext: 0,
+    timers: [] as NodeJS.Timeout[],
+    /** Every snapshot request as the console saw it (path + query), and a status to answer with instead of the picture. */
+    snapshotRequests: [] as string[],
+    snapshotStatus: 200,
+  };
   const behaviour = opts.relayBehaviour ?? "toggle";
 
   const app = Fastify({ logger: false });
@@ -50,6 +60,14 @@ export async function startMockProtect(opts: MockProtectOptions = {}) {
   app.get(`${base}/relays`, async () => relays);
   app.get<{ Params: { id: string } }>(`${base}/relays/:id`, async (req, reply) => relays.find((r) => r.id === req.params.id) ?? reply.code(404).send({ error: "not found" }));
   app.get(`${base}/cameras`, async () => cameras);
+  // Answers as the real console was observed to (camera_snapshot.meta.json); the picture itself is synthetic.
+  app.get<{ Params: { id: string }; Querystring: { highQuality?: string } }>(`${base}/cameras/:id/snapshot`, async (req, reply) => {
+    state.snapshotRequests.push(req.url);
+    if (state.snapshotStatus !== 200) return reply.code(state.snapshotStatus).send({ name: "SIMULATED" });
+    if (!cameras.some((c) => c.id === req.params.id)) return reply.code(snapshotMeta.unknownCamera.status).send(snapshotMeta.unknownCamera.body);
+    if (req.query.highQuality === "true") return reply.code(snapshotMeta.highQuality.status).send(snapshotMeta.highQuality.body);
+    return reply.headers(snapshotMeta.ok.headers).send(readFileSync(join(fixturesDir, "synthetic-snapshot.jpg")));
+  });
   app.post<{ Params: { id: string; out: string } }>(`${base}/relays/:id/outputs/:out/activate`, async (req, reply) => {
     const relay = relays.find((r) => r.id === req.params.id);
     const outputId = Number(req.params.out);

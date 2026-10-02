@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
-import type { ProtectCamera, ProtectClient, ProtectMetaInfo, ProtectRelay, ProtectSensor } from "./types.js";
+import { ProtectError, type ProtectCamera, type ProtectClient, type ProtectMetaInfo, type ProtectRelay, type ProtectSensor, type ProtectSnapshot } from "./types.js";
+import { drawGarage } from "../mock/illustration.js";
 
 export const SIM_IDS = {
   sensorId: "mock-sensor-0001",
@@ -61,7 +62,7 @@ export class SimDoor {
    * though the travel was cut short. Folding the two together is what hid #5.
    */
   private tiltTimer: NodeJS.Timeout | null = null;
-  /** Where the door is between floor (0) and fully up (1). */
+  /** Where the door is between floor (0) and fully up (1), for the drawn snapshot only. */
   private travel = { from: 0, to: 0, startedAt: 0, ms: 0 };
 
   constructor(private readonly travelMs: number, private readonly tiltMs: number, private readonly now: () => number, private readonly onSensor: (opened: boolean) => void) {
@@ -295,6 +296,11 @@ export class ProtectSimulator extends EventEmitter implements ProtectClient {
       { id: SIM_IDS.interiorCameraId, modelKey: "camera", name: "Garage (mock)", state: "CONNECTED", smartDetectSettings: { objectTypes: ["person", "vehicle"] } },
       { id: SIM_IDS.drivewayCameraId, modelKey: "camera", name: "Driveway (mock)", state: "CONNECTED", smartDetectSettings: { objectTypes: ["person", "vehicle"] } },
     ];
+  }
+  /** A drawn garage, never a photograph: every simulated door at the height it is at right now. */
+  async getCameraSnapshot(id: string): Promise<ProtectSnapshot> {
+    if (id !== SIM_IDS.interiorCameraId && id !== SIM_IDS.drivewayCameraId) throw new ProtectError("camera not found", 404);
+    return { contentType: "image/png", body: drawGarage(this.doors.map((d) => d.position())) };
   }
   async activateOutput(relayId: string, outputId: number): Promise<unknown> {
     const door = relayId === SIM_IDS.relayId ? this.doors[outputId] : undefined;

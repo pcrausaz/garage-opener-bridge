@@ -9,8 +9,9 @@ import { DoorBusyError, DoorDirectionError, DoorNotMovingError, DoorUnknownError
 import { ProtectError } from "../protect/types.js";
 import { ContractValidator } from "./validation.js";
 import { openSse } from "./sse.js";
+import { SnapshotError } from "../camera/snapshots.js";
 import { classifyAlarmPayload, stripThumbnails } from "../webhooks/classify.js";
-import type { ApiError, DoorCommand } from "../types.js";
+import { iso, type ApiError, type DoorCommand } from "../types.js";
 import type { MemberIdentity } from "../members.js";
 import { AUDIT_KINDS, auditToCsv, type AuditKind } from "../store/db.js";
 
@@ -173,6 +174,7 @@ export async function buildServer(o: ServerOptions) {
     if (error instanceof DoorBusyError) return err(reply, 409, "door_busy", error.message);
     if (error instanceof DoorNotMovingError) return err(reply, 409, "door_not_moving", error.message);
     if (error instanceof DoorDirectionError) return err(reply, 409, "door_direction", error.message);
+    if (error instanceof SnapshotError) return err(reply, error.status, error.code, error.message);
     if (error instanceof DoorUnknownError || error instanceof ProtectError) return err(reply, 503, "protect_unavailable", error.message);
     if (error.statusCode === 429) return reply.code(429).send({ error: "rate_limited", message: "too many requests" });
     if (error.validation || error.statusCode === 400) return err(reply, 400, "validation", error.message);
@@ -288,6 +290,22 @@ export async function buildServer(o: ServerOptions) {
   app.delete<{ Params: { doorId: string } }>("/v1/doors/:doorId/hold", { config: { operationId: "clearDoorHold" } }, async (req, reply) => {
     const t = doorById(req, reply);
     return t ? clearHold(t, req, reply) : reply;
+  });
+
+  // The picture is live: `no-store` whatever the console said about caching, and the capture time so the
+  // app can say how old it is. The app polls this every 2 s while a door moves, so it has its own budget
+  // rather than eating the 60/min everything else shares.
+  const snapshot = async (t: Target, req: FastifyRequest, reply: FastifyReply) => {
+    const cameraId = t.unit.mapping.interiorCameraId;
+    if (!cameraId) return err(reply, 404, "no_camera", "this door has no interior camera mapped");
+    const s = await req.inst!.snapshots.get(cameraId);
+    return reply.header("content-type", s.contentType).header("cache-control", "no-store").header("x-snapshot-at", iso(s.at)).send(s.body);
+  };
+  const snapshotLimit = { max: 120, timeWindow: "1 minute" };
+  app.get("/v1/camera/snapshot", { config: { operationId: "getCameraSnapshot", rateLimit: snapshotLimit } }, async (req, reply) => snapshot(defaultDoor(req), req, reply));
+  app.get<{ Params: { doorId: string } }>("/v1/doors/:doorId/camera/snapshot", { config: { operationId: "getDoorCameraSnapshot", rateLimit: snapshotLimit } }, async (req, reply) => {
+    const t = doorById(req, reply);
+    return t ? snapshot(t, req, reply) : reply;
   });
 
   // Each stream pins a socket, five bus listeners and a heartbeat timer for as long as it is open, so the

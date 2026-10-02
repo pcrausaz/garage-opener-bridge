@@ -18,6 +18,7 @@ import { Notifier } from "./notify/notifier.js";
 import { NtfyTransport } from "./notify/ntfy.js";
 import { OutboundWebhook } from "./notify/webhook.js";
 import type { NotificationTransport } from "./notify/transport.js";
+import { SnapshotCache } from "./camera/snapshots.js";
 import { deviceMatches, type ClassifiedEvent } from "./webhooks/classify.js";
 import { VERSION } from "./version.js";
 import { MembersService } from "./members.js";
@@ -49,6 +50,7 @@ export class Instance {
   readonly sim: ProtectSimulator | null;
   readonly members: MembersService;
   readonly retention: AuditRetention;
+  readonly snapshots: SnapshotCache;
   /** `changed` (member id) when a caller picks another default door; open event streams follow it. */
   readonly defaults = new EventEmitter<{ changed: [string] }>();
   /** Every door, `d1` first. Empty until start() completed. */
@@ -114,6 +116,11 @@ export class Instance {
     }
     this.transports = transports;
     this.notifier = this.notifierFor(this.specs[0]!, this.bus);
+    this.snapshots = new SnapshotCache({
+      protect: this.protect,
+      isMoving: (cameraId) => this.units.some((u) => u.mapping.interiorCameraId === cameraId && u.door.machine().moving !== null),
+      logger,
+    });
   }
 
   /** The doors of this instance. A two-door simulator has a fixed mapping; everything else is the configuration. */
@@ -206,9 +213,13 @@ export class Instance {
       doorId: spec.id, travelSeconds: spec.travelSeconds, verifyAfterSeconds: spec.verifyAfterSeconds,
       buildState: () => this.stateOf(unit),
     });
+    let lastDoor: string | undefined;
     bus.on("state", (s) => {
       this.protectOk = s.connectionOk;
       if (s.connectionOk) this.protectLastOk = Date.now();
+      // A picture taken before the door changed state shows the door as it was.
+      if (s.door !== lastDoor && mapping.interiorCameraId) this.snapshots.invalidate(mapping.interiorCameraId);
+      lastDoor = s.door;
     });
     await unit.door.start();
     unit.alerts = new AlertEngine(

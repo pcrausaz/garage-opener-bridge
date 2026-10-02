@@ -66,6 +66,12 @@ export interface ProtectMetaInfo {
   applicationVersion: string;
 }
 
+/** `GET /cameras/{id}/snapshot`: the bytes and the media type the console declared (`image/jpeg` on 7.2.105). */
+export interface ProtectSnapshot {
+  contentType: string;
+  body: Buffer;
+}
+
 export interface ProtectClient {
   getMetaInfo(): Promise<ProtectMetaInfo>;
   getSensors(): Promise<ProtectSensor[]>;
@@ -73,6 +79,11 @@ export interface ProtectClient {
   getRelays(): Promise<ProtectRelay[]>;
   getRelay(id: string): Promise<ProtectRelay>;
   getCameras(): Promise<ProtectCamera[]>;
+  /**
+   * GET /cameras/{id}/snapshot — never with `highQuality`: the default is what every camera supports, and
+   * `highQuality=true` is a 400 on cameras without full-HD stills (ADR-0021).
+   */
+  getCameraSnapshot(id: string): Promise<ProtectSnapshot>;
   /** POST /relays/{id}/outputs/{outputId}/activate — response shape unknown, treated as opaque. */
   activateOutput(relayId: string, outputId: number): Promise<unknown>;
   close(): Promise<void>;
