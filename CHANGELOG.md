@@ -10,6 +10,51 @@ This project is pre-1.0, so a minor bump may change behaviour. **Read this file 
 that requires you to touch your configuration is called out under **Action required**, and the bridge refuses
 to start with a message that names the fix rather than running in a degraded state.
 
+## 0.6.0 — unreleased
+
+**Additive. No action needed for a one-door install**: with the configuration you have today the bridge
+behaves as 0.5.2 did, every existing route keeps its request and response shape, and `/healthz` is unchanged.
+An app that predates this release keeps working against it, and this release's routes are not required by
+any app.
+
+### Added
+- **A second door.** A USL-Relay has two outputs; `DOOR2_RELAY_ID`, `DOOR2_OUTPUT_ID` and `DOOR2_SENSOR_ID`
+  (or a `doors:` list in the YAML file) add a door `d2` beside `d1`, with `DOOR_NAME` / `DOOR2_NAME`. State,
+  stop memory, hold-open, stuck detection, vehicle presence and the alert rules are per door.
+  - **The second door needs its own garage-mounted sensor.** A door without one cannot be verified, so it
+    cannot be configured, and the bridge refuses to start rather than guess.
+  - It is never auto-paired. With two door outputs and two garage sensors the bridge logs a pairing suggested
+    by the device names and waits for it to be written down. Door 1 is still discovered when there is exactly
+    one output and one sensor, as before.
+  - **Not verified on real hardware.** The reference install has one door. Output `1`'s real behaviour on
+    `activate` and Alarm Manager payloads from a second sensor are unconfirmed; everything about a second
+    door is tested against the simulator only.
+- **Door-scoped API**: `GET /v1/doors`, `GET /v1/doors/{doorId}/state`,
+  `POST /v1/doors/{doorId}/{open|close|toggle|stop}`, `PUT|DELETE /v1/doors/{doorId}/hold`,
+  `PUT /v1/doors/default`. The routes without a door id are not deprecated: they mean the caller's default
+  door, `d1` until one is chosen. The default is stored per member (per admin token for admins), and an
+  invite can name the door its phone starts on.
+- `/v1/events?doors=all` streams every door's events, each carrying `doorId`. Without the parameter the
+  stream carries only the caller's default door, as before.
+- **Camera snapshot**: `GET /v1/camera/snapshot` and `GET /v1/doors/{doorId}/camera/snapshot` return a still
+  from the door's interior camera. The bridge fetches it with its own key and caches it per camera (2 s while
+  a door using the camera moves, 10 s otherwise), so the Protect key never reaches a member's phone. Stills
+  only. Each fetch spends one of the key's 10 requests per second.
+- A known licence plate can be tied to a door: `LPR_KNOWN_PLATES=ABC123,XYZ789:d2`. An untied plate means
+  door 1, as before.
+- Mock mode: `MOCK_DOORS=2` gives the simulator a second door, `POST /v1/mock/{action}` takes an optional
+  `doorId`, and the snapshot is a drawn garage that follows the simulated doors.
+
+### Changed
+- New optional fields on existing payloads, nothing removed: `doorId` on activity-log entries, alerts and
+  auto-actions; `doors` and `suggestedDoors` in `/v1/discovery`; `doors` and `defaultDoorId` in the invite
+  claim. `/v1/discovery` now omits `suggested` when there is nothing to suggest, where it used to send `null`.
+- With more than one door, alert titles name the door, ntfy action buttons address the alert's door, the
+  activity CSV gains a `door` column, and outbound webhook events carry `doorId`. With one door none of that
+  changes.
+- The database gains three nullable columns on first start. A 0.5.x bridge can still open the file, so
+  rolling back needs nothing.
+
 ## 0.5.2 — 2026-09-22
 
 - Fixed: `selfhost/docker-compose.yml` would not start for anyone not using ntfy. The ntfy service required
