@@ -63,6 +63,7 @@ services:
       BONJOUR: ${BONJOUR:-}
       BRIDGE_TOKEN_NAMES: ${BRIDGE_TOKEN_NAMES:-}
       # Optional: door mapping (auto-discovered when there is exactly one garage relay output and one garage sensor)
+      DOOR_NAME: ${DOOR_NAME:-}
       DOOR_RELAY_ID: ${DOOR_RELAY_ID:-}
       DOOR_OUTPUT_ID: ${DOOR_OUTPUT_ID:-}
       DOOR_SENSOR_ID: ${DOOR_SENSOR_ID:-}
@@ -70,6 +71,16 @@ services:
       DOOR_DRIVEWAY_CAMERA_ID: ${DOOR_DRIVEWAY_CAMERA_ID:-}
       DOOR_TRAVEL_SECONDS: ${DOOR_TRAVEL_SECONDS:-}
       DOOR_VERIFY_AFTER_SECONDS: ${DOOR_VERIFY_AFTER_SECONDS:-}
+      # Optional: a second door. Never discovered: it needs DOOR2_RELAY_ID, DOOR2_OUTPUT_ID and DOOR2_SENSOR_ID
+      # (its own garage-mounted sensor). Leave all of these empty for a one-door install.
+      DOOR2_NAME: ${DOOR2_NAME:-}
+      DOOR2_RELAY_ID: ${DOOR2_RELAY_ID:-}
+      DOOR2_OUTPUT_ID: ${DOOR2_OUTPUT_ID:-}
+      DOOR2_SENSOR_ID: ${DOOR2_SENSOR_ID:-}
+      DOOR2_INTERIOR_CAMERA_ID: ${DOOR2_INTERIOR_CAMERA_ID:-}
+      DOOR2_DRIVEWAY_CAMERA_ID: ${DOOR2_DRIVEWAY_CAMERA_ID:-}
+      DOOR2_TRAVEL_SECONDS: ${DOOR2_TRAVEL_SECONDS:-}
+      DOOR2_VERIFY_AFTER_SECONDS: ${DOOR2_VERIFY_AFTER_SECONDS:-}
       # Optional: relay press (emulated is right for the USL-Relay on Protect 7.2.x)
       RELAY_PULSE_MODE: ${RELAY_PULSE_MODE:-}
       RELAY_PULSE_MS: ${RELAY_PULSE_MS:-}

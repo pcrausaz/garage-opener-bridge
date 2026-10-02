@@ -11,7 +11,7 @@ const compose = parseYaml(readFileSync(new URL("../../selfhost/docker-compose.ym
 const bridgeEnv = compose.services.bridge!.environment ?? {};
 
 /** Development, test and mock-only settings a self-hoster never needs. */
-const INTERNAL = new Set(["HOST", "LOG_PRETTY", "VALIDATE_RESPONSES", "MOCK_TOKEN_PREFIX", "MOCK_IDLE_MINUTES"]);
+const INTERNAL = new Set(["HOST", "LOG_PRETTY", "VALIDATE_RESPONSES", "MOCK_TOKEN_PREFIX", "MOCK_IDLE_MINUTES", "MOCK_DOORS"]);
 
 describe("selfhost/docker-compose.yml", () => {
   it("lists every self-hosting setting under the bridge's environment", () => {

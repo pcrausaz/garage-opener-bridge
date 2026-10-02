@@ -18,6 +18,8 @@ export interface AuditEntry {
   to?: string;
   outcome: AuditOutcome;
   detail?: string;
+  /** The door the row is about, when it is about one (written from 0.6 on). */
+  doorId?: string;
 }
 
 export type AuditInput = Omit<AuditEntry, "id" | "at"> & { at?: string };
@@ -67,8 +69,13 @@ export class Store {
     `);
     const cols = (this.db.pragma("table_info(audit)") as { name: string }[]).map((c) => c.name);
     if (!cols.includes("member")) this.db.exec("ALTER TABLE audit ADD COLUMN member TEXT");
+    // Added columns only, all nullable: a 0.5.x bridge pointed back at this file keeps working.
+    if (!cols.includes("door_id")) this.db.exec("ALTER TABLE audit ADD COLUMN door_id TEXT");
+    const has = (table: string, col: string) => (this.db.pragma(`table_info(${table})`) as { name: string }[]).some((c) => c.name === col);
+    if (!has("members", "default_door_id")) this.db.exec("ALTER TABLE members ADD COLUMN default_door_id TEXT");
+    if (!has("invites", "default_door_id")) this.db.exec("ALTER TABLE invites ADD COLUMN default_door_id TEXT");
     this.insertAudit = this.db.prepare(
-      "INSERT INTO audit (at, kind, source, member, command, from_state, to_state, outcome, detail) VALUES (@at, @kind, @source, @member, @command, @from, @to, @outcome, @detail)",
+      "INSERT INTO audit (at, kind, source, member, command, from_state, to_state, outcome, detail, door_id) VALUES (@at, @kind, @source, @member, @command, @from, @to, @outcome, @detail, @doorId)",
     );
     this.updateAudit = this.db.prepare("UPDATE audit SET to_state = COALESCE(@to, to_state), outcome = @outcome, detail = COALESCE(@detail, detail) WHERE id = @id");
     this.getKv = this.db.prepare("SELECT value FROM kv WHERE key = ?");
@@ -87,6 +94,7 @@ export class Store {
       to: input.to ?? null,
       outcome: input.outcome,
       detail: input.detail ?? null,
+      doorId: input.doorId ?? null,
     });
     return Number(res.lastInsertRowid);
   }
@@ -116,6 +124,7 @@ export class Store {
       if (r.from_state) e.from = r.from_state as string;
       if (r.to_state) e.to = r.to_state as string;
       if (r.detail) e.detail = r.detail as string;
+      if (r.door_id) e.doorId = r.door_id as string;
       return e;
     });
   }
@@ -166,8 +175,18 @@ function csvField(v: string | number | undefined): string {
 
 export const AUDIT_CSV_HEADER = ["id", "at", "kind", "source", "member", "command", "from", "to", "outcome", "detail"] as const;
 
-/** Newest-first CSV of audit rows, UTF-8, no BOM. Timestamps stay ISO-8601 so they sort and re-parse. */
-export function auditToCsv(entries: readonly AuditEntry[]): string {
-  const rows = entries.map((e) => [e.id, e.at, e.kind, e.source, e.member, e.command, e.from, e.to, e.outcome, e.detail].map(csvField).join(","));
-  return [AUDIT_CSV_HEADER.join(","), ...rows].join("\r\n") + "\r\n";
+/**
+ * Newest-first CSV of audit rows, UTF-8, no BOM. Timestamps stay ISO-8601 so they sort and re-parse.
+ *
+ * `doorNames` is passed only by an install with more than one door: it appends a `door` column naming the
+ * door each row is about. A one-door export keeps the ten columns it always had.
+ */
+export function auditToCsv(entries: readonly AuditEntry[], doorNames?: ReadonlyMap<string, string>): string {
+  const rows = entries.map((e) => {
+    const fields = [e.id, e.at, e.kind, e.source, e.member, e.command, e.from, e.to, e.outcome, e.detail];
+    if (doorNames) fields.push(e.doorId ? (doorNames.get(e.doorId) ?? e.doorId) : undefined);
+    return fields.map(csvField).join(",");
+  });
+  const header = doorNames ? [...AUDIT_CSV_HEADER, "door"] : AUDIT_CSV_HEADER;
+  return [header.join(","), ...rows].join("\r\n") + "\r\n";
 }

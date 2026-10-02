@@ -86,6 +86,11 @@ export interface LiveDoorServiceDeps {
   logger: Logger;
   config: Config;
   mapping: DoorMapping;
+  /** Recorded on every audit row this door writes; `d1` for the only door of a one-door install. */
+  doorId?: string;
+  /** This door's own timings; default to `config.door`. */
+  travelSeconds?: number;
+  verifyAfterSeconds?: number;
   now?: () => number;
   /** Builds the full API State (hold, vehicle, …) for bus emission. */
   buildState: () => State;
@@ -112,9 +117,13 @@ export class LiveDoorService implements DoorService {
   private polling: Promise<void> | null = null;
   private readonly log: Logger;
   private readonly now: () => number;
+  private readonly doorId: string;
+  private readonly travelMs: number;
 
   constructor(private readonly d: LiveDoorServiceDeps) {
     this.mapping = d.mapping;
+    this.doorId = d.doorId ?? "d1";
+    this.travelMs = ((d.travelSeconds ?? d.config.door.travelSeconds) + (d.verifyAfterSeconds ?? d.config.door.verifyAfterSeconds)) * 1000;
     this.now = d.now ?? Date.now;
     this.log = d.logger.child({ component: "door" });
     this.state = initialDoorState(this.now());
@@ -301,7 +310,7 @@ export class LiveDoorService implements DoorService {
     const startedAt = this.now();
     const from = this.state.door;
     const audit = (outcome: "rejected" | "failed" | "ok", detail: string) =>
-      this.d.store.audit({ kind: "command", source: opts.source, member: opts.member, command: "stop", from, outcome, detail });
+      this.d.store.audit({ doorId: this.doorId, kind: "command", source: opts.source, member: opts.member, command: "stop", from, outcome, detail });
     if (this.pulsing) {
       audit("rejected", "a relay press is already in progress");
       throw new DoorBusyError("a press is already in progress");
@@ -384,7 +393,7 @@ export class LiveDoorService implements DoorService {
     const check = this.busy || this.pulsing ? ({ ok: false, reason: "busy" } as const) : canCommand(this.state, command);
     if (!check.ok) {
       const outcome = check.reason === "busy" || check.reason === "direction" ? "rejected" : "failed";
-      this.d.store.audit({ kind: "command", source: opts.source, member: opts.member, command, from, outcome, detail: check.reason });
+      this.d.store.audit({ doorId: this.doorId, kind: "command", source: opts.source, member: opts.member, command, from, outcome, detail: check.reason });
       if (check.reason === "busy") throw new DoorBusyError("door is moving");
       if (check.reason === "direction") {
         const press = nextPress(this.state);
@@ -393,7 +402,7 @@ export class LiveDoorService implements DoorService {
       throw new DoorUnknownError("door state unknown (console unreachable)");
     }
     if (check.noop) {
-      const auditId = this.d.store.audit({ kind: "command", source: opts.source, member: opts.member, command, from, to: from, outcome: "noop" });
+      const auditId = this.d.store.audit({ doorId: this.doorId, kind: "command", source: opts.source, member: opts.member, command, from, to: from, outcome: "noop" });
       const result: CommandResult = { ok: true, command, from, to: from, pulsed: false, verified: true, auditId, startedAt: iso(startedAt), finishedAt: iso(this.now()) };
       this.d.bus.emit("command", result);
       return result;
@@ -402,15 +411,15 @@ export class LiveDoorService implements DoorService {
     // Emulated mode: the press sequence starts by releasing it, so the command proceeds.
     if (this.stuck.isStuck() && this.d.config.relay.pulseMode === "native") {
       const auditId = this.d.store.audit({
-        kind: "command", source: opts.source, member: opts.member, command, from, to: from, outcome: "failed",
+        doorId: this.doorId, kind: "command", source: opts.source, member: opts.member, command, from, to: from, outcome: "failed",
         detail: "relay_output_stuck: output held on after activate; set RELAY_PULSE_MODE=emulated",
       });
       const result: CommandResult = { ok: false, command, from, to: from, pulsed: false, verified: false, auditId, startedAt: iso(startedAt), finishedAt: iso(this.now()), error: "relay_output_stuck" };
       this.d.bus.emit("command", result);
       return result;
     }
-    const auditId = this.d.store.audit({ kind: "command", source: opts.source, member: opts.member, command, from, outcome: "ok", detail: "pulsing" });
-    const travelMs = (this.d.config.door.travelSeconds + this.d.config.door.verifyAfterSeconds) * 1000;
+    const auditId = this.d.store.audit({ doorId: this.doorId, kind: "command", source: opts.source, member: opts.member, command, from, outcome: "ok", detail: "pulsing" });
+    const travelMs = this.travelMs;
     this.busy = true;
     try {
       await this.pressRelay();

@@ -7,6 +7,12 @@ info:
     Self-hosted bridge between the app and a UniFi Protect console (USL-Relay pulse output + garage-mounted
     all-in-one sensor). The sensor is the only source of truth for door state; the relay output state is never
     door state. All `/v1/*` routes except the Alarm Manager webhook require a bearer token from `BRIDGE_TOKENS`.
+
+    An install has a list of doors (`d1`, `d2`, … by position in the configuration; `GET /v1/doors`). The routes
+    under `/v1/doors/{doorId}` address one door. The routes that carry no door id (`/v1/state`, `/v1/door/*`,
+    `/v1/hold`, `/v1/events`, `/v1/mock/*`) are not deprecated: they act on the **caller's
+    default door**, which is `d1` until `PUT /v1/doors/default` says otherwise. A one-door install never needs
+    anything else, and a bridge older than 0.6 answers `GET /v1/doors` with 404.
 servers:
   - url: http://localhost:8787
     description: local dev / docker
@@ -15,6 +21,8 @@ security:
 tags:
   - name: door
     description: Door state and commands
+  - name: doors
+    description: The list of doors, and the same commands addressed to one of them
   - name: hold
     description: Hold-open flag
   - name: events
@@ -48,7 +56,7 @@ paths:
     get:
       tags: [door]
       operationId: getState
-      summary: Current door state, hold-open, sensor and relay health
+      summary: Current state of the caller's default door, with hold-open, sensor and relay health
       responses:
         "200":
           description: OK
@@ -126,6 +134,138 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "409": { $ref: "#/components/responses/Conflict" }
         "503": { $ref: "#/components/responses/ProtectUnavailable" }
+  /v1/doors:
+    get:
+      tags: [doors]
+      operationId: listDoors
+      summary: The doors of this install and the caller's default door
+      description: |
+        Ask once per connection. 404 means a bridge older than 0.6: it has one door, reached through the routes
+        that carry no door id.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DoorList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/ProtectUnavailable" }
+  /v1/doors/default:
+    put:
+      tags: [doors]
+      operationId: setDefaultDoor
+      summary: Choose which door the routes without a door id mean for this caller
+      description: |
+        Stored on the member record (per admin token for admins), so every surface using the same token — the
+        Watch, widgets, Shortcuts — follows it. Other members are not affected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DefaultDoor" }
+      responses:
+        "200":
+          description: Stored
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DefaultDoor" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/doors/{doorId}/state:
+    get:
+      tags: [doors]
+      operationId: getDoorState
+      summary: Current state of one door
+      parameters: [{ $ref: "#/components/parameters/DoorId" }]
+      responses:
+        "200":
+          description: OK; carries `doorId`
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/State" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/UnknownDoor" }
+  /v1/doors/{doorId}/open:
+    post:
+      tags: [doors]
+      operationId: openDoorById
+      summary: Open one door (as `POST /v1/door/open`)
+      parameters: [{ $ref: "#/components/parameters/DoorId" }, { $ref: "#/components/parameters/Wait" }, { $ref: "#/components/parameters/Source" }]
+      responses:
+        "200": { $ref: "#/components/responses/CommandResult" }
+        "202": { $ref: "#/components/responses/CommandAccepted" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/UnknownDoor" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ProtectUnavailable" }
+  /v1/doors/{doorId}/close:
+    post:
+      tags: [doors]
+      operationId: closeDoorById
+      summary: Close one door (as `POST /v1/door/close`)
+      parameters: [{ $ref: "#/components/parameters/DoorId" }, { $ref: "#/components/parameters/Wait" }, { $ref: "#/components/parameters/Source" }]
+      responses:
+        "200": { $ref: "#/components/responses/CommandResult" }
+        "202": { $ref: "#/components/responses/CommandAccepted" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/UnknownDoor" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ProtectUnavailable" }
+  /v1/doors/{doorId}/toggle:
+    post:
+      tags: [doors]
+      operationId: toggleDoorById
+      summary: Pulse one door's relay output once regardless of state (as `POST /v1/door/toggle`)
+      parameters: [{ $ref: "#/components/parameters/DoorId" }, { $ref: "#/components/parameters/Wait" }, { $ref: "#/components/parameters/Source" }]
+      responses:
+        "200": { $ref: "#/components/responses/CommandResult" }
+        "202": { $ref: "#/components/responses/CommandAccepted" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/UnknownDoor" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ProtectUnavailable" }
+  /v1/doors/{doorId}/stop:
+    post:
+      tags: [doors]
+      operationId: stopDoorById
+      summary: Stop one door part-way (as `POST /v1/door/stop`)
+      parameters: [{ $ref: "#/components/parameters/DoorId" }, { $ref: "#/components/parameters/Source" }]
+      responses:
+        "200": { $ref: "#/components/responses/CommandResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/UnknownDoor" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ProtectUnavailable" }
+  /v1/doors/{doorId}/hold:
+    put:
+      tags: [doors]
+      operationId: setDoorHold
+      summary: Hold one door open (suppress its alerts) for N minutes
+      description: Hold-open is per door; holding one door does not silence the other's alerts.
+      parameters: [{ $ref: "#/components/parameters/DoorId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HoldRequest" }
+      responses:
+        "200":
+          description: Hold set; carries `doorId`
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Hold" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/UnknownDoor" }
+    delete:
+      tags: [doors]
+      operationId: clearDoorHold
+      summary: Clear one door's hold-open flag
+      parameters: [{ $ref: "#/components/parameters/DoorId" }]
+      responses:
+        "204": { description: "Cleared (also when no hold was active)" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/UnknownDoor" }
   /v1/auto-actions/{id}/undo:
     post:
       tags: [door]
@@ -184,11 +324,24 @@ paths:
         `text/event-stream`. Event names: `state`, `command`, `alert`, `hold`, `vehicle`, `heartbeat`.
         Each `data:` line is the JSON of the matching schema (`State`, `CommandResult`, `Alert`, `Hold`, `VehiclePresence`).
         A `state` event is sent immediately on connect. Bearer token may be passed as `?token=` for EventSource clients.
+
+        Without `doors`, the stream carries **only the caller's default door**, in exactly the shapes above: a
+        client that knows one door applies every event to it, so it must never be sent another door's. If the
+        caller's default door changes while the stream is open, the stream switches to the new default and sends
+        its `state` straight away.
+
+        With `doors=all` the stream carries every door's events, one initial `state` per door, and the `data`
+        of every `state`, `command`, `alert`, `hold` and `vehicle` frame carries `doorId`.
       parameters:
         - name: token
           in: query
           required: false
           schema: { type: string }
+        - name: doors
+          in: query
+          required: false
+          description: "`all` streams every door's events, each carrying `doorId`. Omit for the default door only."
+          schema: { type: string, enum: [all] }
       responses:
         "200":
           description: Stream
@@ -246,7 +399,9 @@ paths:
           schema: { type: string, example: "command,alert" }
       responses:
         "200":
-          description: "CSV with a header row: id,at,kind,source,member,command,from,to,outcome,detail"
+          description: |
+            CSV with a header row: `id,at,kind,source,member,command,from,to,outcome,detail`. An install with
+            more than one door appends a `door` column holding the door's name.
           content:
             text/csv:
               schema: { type: string }
@@ -257,6 +412,11 @@ paths:
       tags: [discovery]
       operationId: getDiscovery
       summary: Relays, sensors and cameras seen on the console plus the suggested/current door mapping
+      description: |
+        `current` is the mapping of the caller's default door and `suggested` the single-door auto-pairing, both
+        as before. `doors` lists every configured door. `suggestedDoors` appears when the console shows two door
+        outputs and two garage sensors whose names pair up unambiguously: it is a suggestion to write down as
+        `DOOR_*` / `DOOR2_*`, never applied by the bridge.
       responses:
         "200":
           description: OK
@@ -311,6 +471,7 @@ paths:
               properties:
                 publicUrl: { type: string, format: uri, description: Address the invitee should use (defaults to PUBLIC_URL or the request origin) }
                 name: { type: string, minLength: 1, maxLength: 48, description: "Who the invite is for, e.g. Margo; pre-fills the name on the joining phone" }
+                defaultDoorId: { type: string, description: "Default door for the phone that claims this invite. Omit to hand on the inviter's own default." }
       responses:
         "201":
           description: Created
@@ -414,7 +575,12 @@ paths:
       tags: [mock]
       operationId: mockAction
       summary: Drive the in-memory Protect simulator (BRIDGE_MODE=mock only)
-      description: State is keyed by bearer token so concurrent reviewers never collide; it expires after 60 min idle.
+      description: |
+        State is keyed by bearer token so concurrent reviewers never collide; it expires after 60 min idle.
+
+        With `MOCK_DOORS=2` the simulator has a second relay output and sensor. `doorId` in the body picks the
+        door; without it the action applies to the caller's default door, except `reset`, which then resets the
+        whole simulator. `plate-seen` is routed by the plate, not by `doorId`. The response is that door's state.
       parameters:
         - name: action
           in: path
@@ -430,6 +596,7 @@ paths:
               type: object
               properties:
                 plate: { type: string, description: "Required for `plate-seen`" }
+                doorId: { type: string, description: "Door to act on; defaults to the caller's default door" }
       responses:
         "200":
           description: Applied; returns the resulting state
@@ -438,13 +605,19 @@ paths:
               schema: { $ref: "#/components/schemas/State" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { description: "Not in mock mode" }
+        "404": { description: "Not in mock mode, or unknown `doorId`" }
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
   parameters:
+    DoorId:
+      name: doorId
+      in: path
+      required: true
+      description: Door id from `GET /v1/doors` (`d1`, `d2`, …).
+      schema: { type: string }
     Wait:
       name: wait
       in: query
@@ -496,6 +669,11 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
+    UnknownDoor:
+      description: No door with this id (`unknown_door`)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
   schemas:
     DoorState:
       type: string
@@ -508,7 +686,7 @@ components:
       type: object
       required: [error, message]
       properties:
-        error: { type: string, description: "Machine code (e.g. `unauthorized`, `door_busy`, `door_not_moving`, `door_direction`, `protect_unavailable`, `validation`)" }
+        error: { type: string, description: "Machine code (e.g. `unauthorized`, `door_busy`, `door_not_moving`, `door_direction`, `protect_unavailable`, `validation`, `unknown_door`, `no_camera`, `camera_unavailable`, `camera_forbidden`, `rate_limited`)" }
         message: { type: string }
         details: { type: object, additionalProperties: true }
     Health:
@@ -568,6 +746,7 @@ components:
         until: { type: string, format: date-time }
         minutes: { type: integer }
         setAt: { type: string, format: date-time }
+        doorId: { type: string, description: "Which door. Present on `/v1/doors/{doorId}/…` responses and on `/v1/events?doors=all` frames; absent on the routes that mean the default door" }
     HoldRequest:
       type: object
       required: [minutes]
@@ -581,6 +760,7 @@ components:
         since: { type: string, format: date-time }
         source: { type: string, enum: [camera-heuristic, mock] }
         note: { type: string, description: "Heuristic from interior camera vehicle detections until LPR" }
+        doorId: { type: string, description: "Which door. Present on `/v1/doors/{doorId}/…` responses and on `/v1/events?doors=all` frames; absent on the routes that mean the default door" }
     State:
       type: object
       required: [door, isOpened, since, hold, sensor, relay, mode, updatedAt, connectionOk]
@@ -605,6 +785,7 @@ components:
             What one relay press does right now. The relay emulates a wall button, so the opener's own
             reversal logic decides: moving → `stop`, `STOPPED` → the reverse of the interrupted travel,
             otherwise the opposite of the resting state. Absent while the door state is UNKNOWN.
+        doorId: { type: string, description: "Which door. Present on `/v1/doors/{doorId}/…` responses and on `/v1/events?doors=all` frames; absent on the routes that mean the default door" }
     CommandResult:
       type: object
       required: [ok, command, from, to, pulsed, verified, auditId, startedAt, finishedAt]
@@ -619,6 +800,7 @@ components:
         startedAt: { type: string, format: date-time }
         finishedAt: { type: string, format: date-time }
         error: { type: string, description: "verification_failed | relay_output_stuck | cancelled" }
+        doorId: { type: string, description: "Which door. Present on `/v1/doors/{doorId}/…` responses and on `/v1/events?doors=all` frames; absent on the routes that mean the default door" }
     CommandAccepted:
       type: object
       required: [accepted, command, auditId, expectedBy]
@@ -627,6 +809,7 @@ components:
         command: { type: string, enum: [open, close, toggle, stop] }
         auditId: { type: integer }
         expectedBy: { type: string, format: date-time }
+        doorId: { type: string, description: "Which door; present on `/v1/doors/{doorId}/…` responses" }
     Alert:
       type: object
       required: [id, rule, title, body, createdAt, actions]
@@ -641,6 +824,7 @@ components:
           items: { type: string, enum: [close-now, hold-2h, ignore, undo] }
         undoUntil: { type: string, format: date-time }
         autoActionId: { type: string, description: "Id for `POST /v1/auto-actions/{id}/undo`" }
+        doorId: { type: string, description: "The door this alert is about (bridges from 0.6). The title names the door when the install has more than one" }
     SseEvent:
       type: object
       description: One SSE frame; `event` is the frame name and `data` its JSON payload.
@@ -677,7 +861,12 @@ components:
             version: { type: string }
             mode: { type: string, enum: [live, mock] }
             publicUrl: { type: string, format: uri }
-        mapping: { $ref: "#/components/schemas/DoorMapping" }
+        mapping: { $ref: "#/components/schemas/DoorMapping", description: "The mapping of this member's default door" }
+        doors:
+          type: array
+          description: Every door of the install (bridges from 0.6)
+          items: { $ref: "#/components/schemas/Door" }
+        defaultDoorId: { type: string, description: "This member's default door: the one the invite named, else the inviter's" }
     Member:
       type: object
       required: [id, name, kind, createdAt]
@@ -702,6 +891,7 @@ components:
         to: { $ref: "#/components/schemas/DoorState" }
         outcome: { type: string, enum: [ok, noop, failed, rejected, notified, undone, stopped] }
         detail: { type: string }
+        doorId: { type: string, description: "The door the entry is about, when it is about one (rows written by bridges from 0.6)" }
     Discovery:
       type: object
       required: [relays, sensors, cameras, current, autoPaired]
@@ -750,6 +940,16 @@ components:
         suggested: { $ref: "#/components/schemas/DoorMapping" }
         current: { $ref: "#/components/schemas/DoorMapping" }
         autoPaired: { type: boolean }
+        doors:
+          type: array
+          description: Every configured door, in order (`d1` first)
+          items: { $ref: "#/components/schemas/Door" }
+        suggestedDoors:
+          type: array
+          description: |
+            Name-based pairing of two door outputs with two garage sensors, in output order. Present only when
+            the names decide it; a suggestion for `DOOR_*` / `DOOR2_*`, never applied automatically.
+          items: { $ref: "#/components/schemas/DoorMapping" }
     DoorMapping:
       type: object
       required: [relayId, outputId, sensorId]
@@ -759,6 +959,28 @@ components:
         sensorId: { type: string }
         interiorCameraId: { type: [string, "null"] }
         drivewayCameraId: { type: [string, "null"] }
+    Door:
+      type: object
+      required: [id, name, hasCamera]
+      properties:
+        id: { type: string, description: "`d1`, `d2`, … by position in the configuration; stable for an install" }
+        name: { type: string, description: "`DOOR_NAME` / `DOOR2_NAME`, else the relay output's name on the console" }
+        hasCamera: { type: boolean, description: "An interior camera is mapped, so `…/camera/snapshot` can answer" }
+        mapping: { $ref: "#/components/schemas/DoorMapping" }
+    DoorList:
+      type: object
+      required: [doors, defaultDoorId]
+      properties:
+        doors:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/Door" }
+        defaultDoorId: { type: string, description: "The door the caller's routes without a door id act on" }
+    DefaultDoor:
+      type: object
+      required: [doorId]
+      properties:
+        doorId: { type: string }
     AlarmManagerPayload:
       type: object
       description: Best-effort shape; the bridge tolerates unknown fields and logs raw payloads at debug.

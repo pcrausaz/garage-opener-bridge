@@ -51,6 +51,7 @@ interface MemberRow {
   created_at: string;
   last_seen_at: string | null;
   revoked_at: string | null;
+  default_door_id: string | null;
 }
 
 interface InviteRow {
@@ -59,6 +60,7 @@ interface InviteRow {
   created_at: string;
   expires_at: number;
   claimed_at: string | null;
+  default_door_id: string | null;
 }
 
 export interface CreatedInvite {
@@ -116,12 +118,28 @@ export class MembersService {
     this.store.db.prepare("UPDATE members SET last_seen_at = ? WHERE id = ?").run(new Date(t).toISOString(), id);
   }
 
-  createInvite(createdBy: string): CreatedInvite {
+  /**
+   * The door the routes without a door id mean for this caller, or `null` when none was chosen (`d1`).
+   * It lives on the member record — per admin token for admins — so every surface sharing the token follows
+   * it. The mock demo identity has no record, so its choice sits in the instance's key-value store.
+   */
+  defaultDoor(id: string): string | null {
+    const row = this.store.db.prepare("SELECT default_door_id FROM members WHERE id = ?").get(id) as { default_door_id: string | null } | undefined;
+    return row ? row.default_door_id : this.store.get<string>(`defaultDoor:${id}`);
+  }
+
+  setDefaultDoor(id: string, doorId: string): void {
+    const r = this.store.db.prepare("UPDATE members SET default_door_id = ? WHERE id = ?").run(doorId, id);
+    if (r.changes === 0) this.store.set(`defaultDoor:${id}`, doorId);
+  }
+
+  /** `defaultDoorId` becomes the claiming phone's default door; without it the phone inherits the inviter's. */
+  createInvite(createdBy: string, defaultDoorId?: string): CreatedInvite {
     const code = generateInviteCode();
     const expires = this.now() + INVITE_TTL_MS;
     this.store.db
-      .prepare("INSERT INTO invites (code_hash, created_by, created_at, expires_at) VALUES (?, ?, ?, ?)")
-      .run(hashToken(code), createdBy, new Date(this.now()).toISOString(), expires);
+      .prepare("INSERT INTO invites (code_hash, created_by, created_at, expires_at, default_door_id) VALUES (?, ?, ?, ?, ?)")
+      .run(hashToken(code), createdBy, new Date(this.now()).toISOString(), expires, defaultDoorId ?? this.defaultDoor(createdBy));
     this.store.db.prepare("DELETE FROM invites WHERE expires_at < ?").run(this.now() - 86_400_000);
     return { code, expiresAt: new Date(expires).toISOString() };
   }
@@ -147,7 +165,9 @@ export class MembersService {
     const tx = this.store.db.transaction(() => {
       const r = this.store.db.prepare("UPDATE invites SET claimed_at = ? WHERE code_hash = ? AND claimed_at IS NULL").run(createdAt, inv.code_hash);
       if (r.changes !== 1) throw new Error("already claimed");
-      this.store.db.prepare("INSERT INTO members (id, name, kind, token_hash, created_at) VALUES (?, ?, 'member', ?, ?)").run(id, deviceName.trim(), hashToken(token), createdAt);
+      this.store.db
+        .prepare("INSERT INTO members (id, name, kind, token_hash, created_at, default_door_id) VALUES (?, ?, 'member', ?, ?, ?)")
+        .run(id, deviceName.trim(), hashToken(token), createdAt, inv.default_door_id);
     });
     try {
       tx();

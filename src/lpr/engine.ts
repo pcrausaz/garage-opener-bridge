@@ -17,6 +17,8 @@ export interface LprOptions {
   sightingDedupeMs?: number;
   /** A plate seen this long after presence ended still counts as "leaving". */
   departWindowMs?: number;
+  /** The door these plates belong to (`ABC123:d2`); an untied plate means `d1`. */
+  doorId?: string;
   now?: () => number;
 }
 
@@ -31,6 +33,7 @@ export class LprEngine {
   private readonly known: Set<string>;
   private readonly now: () => number;
   private readonly log: Logger;
+  private readonly doorId: string;
   private lastSighting = new Map<string, number>();
   private presenceEndedAt: number | null = null;
   private departTimer: NodeJS.Timeout | null = null;
@@ -43,6 +46,7 @@ export class LprEngine {
   ) {
     this.known = new Set(o.knownPlates.map(normalizePlate));
     this.now = o.now ?? Date.now;
+    this.doorId = o.doorId ?? "d1";
     this.log = d.logger.child({ component: "lpr" });
   }
 
@@ -115,8 +119,8 @@ export class LprEngine {
   private async autoAction(rule: "lpr-auto-open" | "lpr-auto-close", command: DoorCommand, body: string): Promise<void> {
     const at = this.now();
     this.decisions.push({ rule, command, at });
-    const auditId = this.d.store.audit({ kind: "auto-action", source: rule, command, outcome: "ok" });
-    const action: AutoAction = { id: randomUUID(), rule, command, at: iso(at), undoUntil: iso(at + this.o.undoSeconds * 1000), auditId };
+    const auditId = this.d.store.audit({ doorId: this.doorId, kind: "auto-action", source: rule, command, outcome: "ok" });
+    const action: AutoAction = { id: randomUUID(), rule, command, at: iso(at), undoUntil: iso(at + this.o.undoSeconds * 1000), auditId, doorId: this.doorId };
     this.undoable.set(action.id, action);
     setTimeout(() => this.undoable.delete(action.id), this.o.undoSeconds * 1000).unref?.();
     this.d.bus.emit("auto-action", action);

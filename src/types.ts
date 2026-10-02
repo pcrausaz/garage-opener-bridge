@@ -12,6 +12,7 @@ export type AlertAction = Alert["actions"][number];
 export type VehiclePresence = Schemas["VehiclePresence"];
 export type Health = Schemas["Health"];
 export type Discovery = Schemas["Discovery"];
+export type Door = Schemas["Door"];
 export type ApiError = Schemas["Error"];
 export type DoorCommand = "open" | "close" | "toggle" | "stop";
 
@@ -22,6 +23,7 @@ export interface AutoAction {
   at: string;
   undoUntil: string;
   auditId: number;
+  doorId?: string;
 }
 
 export const iso = (ms: number): string => new Date(ms).toISOString();

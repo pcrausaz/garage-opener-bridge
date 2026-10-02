@@ -28,7 +28,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Current door state, hold-open, sensor and relay health */
+        /** Current state of the caller's default door, with hold-open, sensor and relay health */
         get: operations["getState"];
         put?: never;
         post?: never;
@@ -132,6 +132,154 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/doors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The doors of this install and the caller's default door
+         * @description Ask once per connection. 404 means a bridge older than 0.6: it has one door, reached through the routes
+         *     that carry no door id.
+         */
+        get: operations["listDoors"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/doors/default": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Choose which door the routes without a door id mean for this caller
+         * @description Stored on the member record (per admin token for admins), so every surface using the same token — the
+         *     Watch, widgets, Shortcuts — follows it. Other members are not affected.
+         */
+        put: operations["setDefaultDoor"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/doors/{doorId}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Current state of one door */
+        get: operations["getDoorState"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/doors/{doorId}/open": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Open one door (as `POST /v1/door/open`) */
+        post: operations["openDoorById"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/doors/{doorId}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close one door (as `POST /v1/door/close`) */
+        post: operations["closeDoorById"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/doors/{doorId}/toggle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pulse one door's relay output once regardless of state (as `POST /v1/door/toggle`) */
+        post: operations["toggleDoorById"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/doors/{doorId}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop one door part-way (as `POST /v1/door/stop`) */
+        post: operations["stopDoorById"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/doors/{doorId}/hold": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Hold one door open (suppress its alerts) for N minutes
+         * @description Hold-open is per door; holding one door does not silence the other's alerts.
+         */
+        put: operations["setDoorHold"];
+        post?: never;
+        /** Clear one door's hold-open flag */
+        delete: operations["clearDoorHold"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auto-actions/{id}/undo": {
         parameters: {
             query?: never;
@@ -184,6 +332,14 @@ export interface paths {
          * @description `text/event-stream`. Event names: `state`, `command`, `alert`, `hold`, `vehicle`, `heartbeat`.
          *     Each `data:` line is the JSON of the matching schema (`State`, `CommandResult`, `Alert`, `Hold`, `VehiclePresence`).
          *     A `state` event is sent immediately on connect. Bearer token may be passed as `?token=` for EventSource clients.
+         *
+         *     Without `doors`, the stream carries **only the caller's default door**, in exactly the shapes above: a
+         *     client that knows one door applies every event to it, so it must never be sent another door's. If the
+         *     caller's default door changes while the stream is open, the stream switches to the new default and sends
+         *     its `state` straight away.
+         *
+         *     With `doors=all` the stream carries every door's events, one initial `state` per door, and the `data`
+         *     of every `state`, `command`, `alert`, `hold` and `vehicle` frame carries `doorId`.
          */
         get: operations["streamEvents"];
         put?: never;
@@ -235,7 +391,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Relays, sensors and cameras seen on the console plus the suggested/current door mapping */
+        /**
+         * Relays, sensors and cameras seen on the console plus the suggested/current door mapping
+         * @description `current` is the mapping of the caller's default door and `suggested` the single-door auto-pairing, both
+         *     as before. `doors` lists every configured door. `suggestedDoors` appears when the console shows two door
+         *     outputs and two garage sensors whose names pair up unambiguously: it is a suggestion to write down as
+         *     `DOOR_*` / `DOOR2_*`, never applied by the bridge.
+         */
         get: operations["getDiscovery"];
         put?: never;
         post?: never;
@@ -352,6 +514,10 @@ export interface paths {
         /**
          * Drive the in-memory Protect simulator (BRIDGE_MODE=mock only)
          * @description State is keyed by bearer token so concurrent reviewers never collide; it expires after 60 min idle.
+         *
+         *     With `MOCK_DOORS=2` the simulator has a second relay output and sensor. `doorId` in the body picks the
+         *     door; without it the action applies to the caller's default door, except `reset`, which then resets the
+         *     whole simulator. `plate-seen` is routed by the plate, not by `doorId`. The response is that door's state.
          */
         post: operations["mockAction"];
         delete?: never;
@@ -372,7 +538,7 @@ export interface components {
          */
         DoorState: "CLOSED" | "OPENING" | "OPEN" | "CLOSING" | "UNKNOWN" | "STUCK" | "STOPPED";
         Error: {
-            /** @description Machine code (e.g. `unauthorized`, `door_busy`, `door_not_moving`, `door_direction`, `protect_unavailable`, `validation`) */
+            /** @description Machine code (e.g. `unauthorized`, `door_busy`, `door_not_moving`, `door_direction`, `protect_unavailable`, `validation`, `unknown_door`, `no_camera`, `camera_unavailable`, `camera_forbidden`, `rate_limited`) */
             error: string;
             message: string;
             details?: {
@@ -433,6 +599,8 @@ export interface components {
             minutes?: number;
             /** Format: date-time */
             setAt?: string;
+            /** @description Which door. Present on `/v1/doors/{doorId}/…` responses and on `/v1/events?doors=all` frames; absent on the routes that mean the default door */
+            doorId?: string;
         };
         HoldRequest: {
             minutes: number;
@@ -445,6 +613,8 @@ export interface components {
             source?: "camera-heuristic" | "mock";
             /** @description Heuristic from interior camera vehicle detections until LPR */
             note?: string;
+            /** @description Which door. Present on `/v1/doors/{doorId}/…` responses and on `/v1/events?doors=all` frames; absent on the routes that mean the default door */
+            doorId?: string;
         };
         State: {
             door: components["schemas"]["DoorState"];
@@ -479,6 +649,8 @@ export interface components {
              * @enum {string}
              */
             nextPress?: "open" | "close" | "stop";
+            /** @description Which door. Present on `/v1/doors/{doorId}/…` responses and on `/v1/events?doors=all` frames; absent on the routes that mean the default door */
+            doorId?: string;
         };
         CommandResult: {
             ok: boolean;
@@ -496,6 +668,8 @@ export interface components {
             finishedAt: string;
             /** @description verification_failed | relay_output_stuck | cancelled */
             error?: string;
+            /** @description Which door. Present on `/v1/doors/{doorId}/…` responses and on `/v1/events?doors=all` frames; absent on the routes that mean the default door */
+            doorId?: string;
         };
         CommandAccepted: {
             /** @constant */
@@ -505,6 +679,8 @@ export interface components {
             auditId: number;
             /** Format: date-time */
             expectedBy: string;
+            /** @description Which door; present on `/v1/doors/{doorId}/…` responses */
+            doorId?: string;
         };
         Alert: {
             id: string;
@@ -519,6 +695,8 @@ export interface components {
             undoUntil?: string;
             /** @description Id for `POST /v1/auto-actions/{id}/undo` */
             autoActionId?: string;
+            /** @description The door this alert is about (bridges from 0.6). The title names the door when the install has more than one */
+            doorId?: string;
         };
         /** @description One SSE frame; `event` is the frame name and `data` its JSON payload. */
         SseEvent: {
@@ -551,7 +729,12 @@ export interface components {
                 /** Format: uri */
                 publicUrl?: string;
             };
+            /** @description The mapping of this member's default door */
             mapping?: components["schemas"]["DoorMapping"];
+            /** @description Every door of the install (bridges from 0.6) */
+            doors?: components["schemas"]["Door"][];
+            /** @description This member's default door: the one the invite named, else the inviter's */
+            defaultDoorId?: string;
         };
         Member: {
             id: string;
@@ -583,6 +766,8 @@ export interface components {
             /** @enum {string} */
             outcome: "ok" | "noop" | "failed" | "rejected" | "notified" | "undone" | "stopped";
             detail?: string;
+            /** @description The door the entry is about, when it is about one (rows written by bridges from 0.6) */
+            doorId?: string;
         };
         Discovery: {
             relays: {
@@ -612,6 +797,13 @@ export interface components {
             suggested?: components["schemas"]["DoorMapping"];
             current: components["schemas"]["DoorMapping"];
             autoPaired: boolean;
+            /** @description Every configured door, in order (`d1` first) */
+            doors?: components["schemas"]["Door"][];
+            /**
+             * @description Name-based pairing of two door outputs with two garage sensors, in output order. Present only when
+             *     the names decide it; a suggestion for `DOOR_*` / `DOOR2_*`, never applied automatically.
+             */
+            suggestedDoors?: components["schemas"]["DoorMapping"][];
         };
         DoorMapping: {
             relayId: string;
@@ -619,6 +811,23 @@ export interface components {
             sensorId: string;
             interiorCameraId?: string | null;
             drivewayCameraId?: string | null;
+        };
+        Door: {
+            /** @description `d1`, `d2`, … by position in the configuration; stable for an install */
+            id: string;
+            /** @description `DOOR_NAME` / `DOOR2_NAME`, else the relay output's name on the console */
+            name: string;
+            /** @description An interior camera is mapped, so `…/camera/snapshot` can answer */
+            hasCamera: boolean;
+            mapping?: components["schemas"]["DoorMapping"];
+        };
+        DoorList: {
+            doors: components["schemas"]["Door"][];
+            /** @description The door the caller's routes without a door id act on */
+            defaultDoorId: string;
+        };
+        DefaultDoor: {
+            doorId: string;
         };
         /** @description Best-effort shape; the bridge tolerates unknown fields and logs raw payloads at debug. */
         AlarmManagerPayload: {
@@ -707,8 +916,19 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description No door with this id (`unknown_door`) */
+        UnknownDoor: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
     };
     parameters: {
+        /** @description Door id from `GET /v1/doors` (`d1`, `d2`, …). */
+        DoorId: string;
         /** @description Wait for verification (default true). `false` returns 202 immediately. */
         Wait: boolean;
         /** @description Free-text origin recorded in the audit log (e.g. `app`, `widget`, `siri`, `watch`, `shortcut`). */
@@ -842,6 +1062,229 @@ export interface operations {
             503: components["responses"]["ProtectUnavailable"];
         };
     };
+    listDoors: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DoorList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            503: components["responses"]["ProtectUnavailable"];
+        };
+    };
+    setDefaultDoor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DefaultDoor"];
+            };
+        };
+        responses: {
+            /** @description Stored */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DefaultDoor"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getDoorState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Door id from `GET /v1/doors` (`d1`, `d2`, …). */
+                doorId: components["parameters"]["DoorId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK; carries `doorId` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["State"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["UnknownDoor"];
+        };
+    };
+    openDoorById: {
+        parameters: {
+            query?: {
+                /** @description Wait for verification (default true). `false` returns 202 immediately. */
+                wait?: components["parameters"]["Wait"];
+                /** @description Free-text origin recorded in the audit log (e.g. `app`, `widget`, `siri`, `watch`, `shortcut`). */
+                source?: components["parameters"]["Source"];
+            };
+            header?: never;
+            path: {
+                /** @description Door id from `GET /v1/doors` (`d1`, `d2`, …). */
+                doorId: components["parameters"]["DoorId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["CommandResult"];
+            202: components["responses"]["CommandAccepted"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["UnknownDoor"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["ProtectUnavailable"];
+        };
+    };
+    closeDoorById: {
+        parameters: {
+            query?: {
+                /** @description Wait for verification (default true). `false` returns 202 immediately. */
+                wait?: components["parameters"]["Wait"];
+                /** @description Free-text origin recorded in the audit log (e.g. `app`, `widget`, `siri`, `watch`, `shortcut`). */
+                source?: components["parameters"]["Source"];
+            };
+            header?: never;
+            path: {
+                /** @description Door id from `GET /v1/doors` (`d1`, `d2`, …). */
+                doorId: components["parameters"]["DoorId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["CommandResult"];
+            202: components["responses"]["CommandAccepted"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["UnknownDoor"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["ProtectUnavailable"];
+        };
+    };
+    toggleDoorById: {
+        parameters: {
+            query?: {
+                /** @description Wait for verification (default true). `false` returns 202 immediately. */
+                wait?: components["parameters"]["Wait"];
+                /** @description Free-text origin recorded in the audit log (e.g. `app`, `widget`, `siri`, `watch`, `shortcut`). */
+                source?: components["parameters"]["Source"];
+            };
+            header?: never;
+            path: {
+                /** @description Door id from `GET /v1/doors` (`d1`, `d2`, …). */
+                doorId: components["parameters"]["DoorId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["CommandResult"];
+            202: components["responses"]["CommandAccepted"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["UnknownDoor"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["ProtectUnavailable"];
+        };
+    };
+    stopDoorById: {
+        parameters: {
+            query?: {
+                /** @description Free-text origin recorded in the audit log (e.g. `app`, `widget`, `siri`, `watch`, `shortcut`). */
+                source?: components["parameters"]["Source"];
+            };
+            header?: never;
+            path: {
+                /** @description Door id from `GET /v1/doors` (`d1`, `d2`, …). */
+                doorId: components["parameters"]["DoorId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["CommandResult"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["UnknownDoor"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["ProtectUnavailable"];
+        };
+    };
+    setDoorHold: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Door id from `GET /v1/doors` (`d1`, `d2`, …). */
+                doorId: components["parameters"]["DoorId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HoldRequest"];
+            };
+        };
+        responses: {
+            /** @description Hold set; carries `doorId` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Hold"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["UnknownDoor"];
+        };
+    };
+    clearDoorHold: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Door id from `GET /v1/doors` (`d1`, `d2`, …). */
+                doorId: components["parameters"]["DoorId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cleared (also when no hold was active) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["UnknownDoor"];
+        };
+    };
     undoAutoAction: {
         parameters: {
             query?: never;
@@ -917,6 +1360,8 @@ export interface operations {
         parameters: {
             query?: {
                 token?: string;
+                /** @description `all` streams every door's events, each carrying `doorId`. Omit for the default door only. */
+                doors?: "all";
             };
             header?: never;
             path?: never;
@@ -981,7 +1426,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description CSV with a header row: id,at,kind,source,member,command,from,to,outcome,detail */
+            /**
+             * @description CSV with a header row: `id,at,kind,source,member,command,from,to,outcome,detail`. An install with
+             *     more than one door appends a `door` column holding the door's name.
+             */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1093,6 +1541,8 @@ export interface operations {
                     publicUrl?: string;
                     /** @description Who the invite is for, e.g. Margo; pre-fills the name on the joining phone */
                     name?: string;
+                    /** @description Default door for the phone that claims this invite. Omit to hand on the inviter's own default. */
+                    defaultDoorId?: string;
                 };
             };
         };
@@ -1258,6 +1708,8 @@ export interface operations {
                 "application/json": {
                     /** @description Required for `plate-seen` */
                     plate?: string;
+                    /** @description Door to act on; defaults to the caller's default door */
+                    doorId?: string;
                 };
             };
         };
@@ -1273,7 +1725,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
-            /** @description Not in mock mode */
+            /** @description Not in mock mode, or unknown `doorId` */
             404: {
                 headers: {
                     [name: string]: unknown;

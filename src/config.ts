@@ -7,6 +7,16 @@ const bool = z.union([z.boolean(), z.string()]).transform((v) => (typeof v === "
 const int = z.union([z.number(), z.string()]).transform((v) => (typeof v === "number" ? v : Number.parseInt(v, 10))).pipe(z.number().int());
 const list = z.union([z.array(z.string()), z.string()]).transform((v) => (Array.isArray(v) ? v : csv(v)));
 
+/** What identifies a door on the console. Every door needs its own garage-mounted sensor (ADR-0020). */
+const doorMappingShape = {
+  name: z.string().trim().min(1).max(48).optional(),
+  relayId: z.string().optional(),
+  outputId: int.optional(),
+  sensorId: z.string().optional(),
+  interiorCameraId: z.string().optional(),
+  drivewayCameraId: z.string().optional(),
+};
+
 export const ConfigSchema = z.object({
   host: z.string().default("0.0.0.0"),
   port: int.default(8787),
@@ -49,19 +59,22 @@ export const ConfigSchema = z.object({
       webhookSecret: z.string().min(16).optional(),
       mockTokenPrefix: z.string().default("demo-"),
       mockIdleMinutes: int.default(60),
+      /** Doors the simulator has (mock mode): 2 adds a second relay output and its own sensor. */
+      mockDoors: int.pipe(z.number().min(1).max(2)).default(1),
     })
     .prefault({}),
+  /** The first door, `d1`. Its timings are also the default for every other door. */
   door: z
     .object({
-      relayId: z.string().optional(),
-      outputId: int.optional(),
-      sensorId: z.string().optional(),
-      interiorCameraId: z.string().optional(),
-      drivewayCameraId: z.string().optional(),
+      ...doorMappingShape,
       travelSeconds: int.default(15),
       verifyAfterSeconds: int.default(3),
     })
     .prefault({}),
+  /** The second door, `d2` (`DOOR2_*`). Unlike `d1` it is never discovered: relay, output and sensor must all be named. */
+  door2: z.object({ ...doorMappingShape, travelSeconds: int.optional(), verifyAfterSeconds: int.optional() }).prefault({}),
+  /** YAML only: the whole list, `d1` first. `door` / `door2` (and so `DOOR_*` / `DOOR2_*`) override its first two entries. */
+  doors: z.array(z.object({ ...doorMappingShape, travelSeconds: int.optional(), verifyAfterSeconds: int.optional() })).optional(),
   relay: z.object({ pulseMode: z.enum(["native", "emulated"]).default("emulated"), pulseMs: int.default(800), releaseMs: int.default(300) }).prefault({}),
   poll: z.object({ movingMs: int.default(2000), idleMs: int.default(15000) }).prefault({}),
   alerts: z
@@ -108,6 +121,8 @@ export const ENV_MAP: Record<string, string> = {
   WEBHOOK_SECRET: "bridge.webhookSecret",
   MOCK_TOKEN_PREFIX: "bridge.mockTokenPrefix",
   MOCK_IDLE_MINUTES: "bridge.mockIdleMinutes",
+  MOCK_DOORS: "bridge.mockDoors",
+  DOOR_NAME: "door.name",
   DOOR_RELAY_ID: "door.relayId",
   DOOR_OUTPUT_ID: "door.outputId",
   DOOR_SENSOR_ID: "door.sensorId",
@@ -115,6 +130,14 @@ export const ENV_MAP: Record<string, string> = {
   DOOR_DRIVEWAY_CAMERA_ID: "door.drivewayCameraId",
   DOOR_TRAVEL_SECONDS: "door.travelSeconds",
   DOOR_VERIFY_AFTER_SECONDS: "door.verifyAfterSeconds",
+  DOOR2_NAME: "door2.name",
+  DOOR2_RELAY_ID: "door2.relayId",
+  DOOR2_OUTPUT_ID: "door2.outputId",
+  DOOR2_SENSOR_ID: "door2.sensorId",
+  DOOR2_INTERIOR_CAMERA_ID: "door2.interiorCameraId",
+  DOOR2_DRIVEWAY_CAMERA_ID: "door2.drivewayCameraId",
+  DOOR2_TRAVEL_SECONDS: "door2.travelSeconds",
+  DOOR2_VERIFY_AFTER_SECONDS: "door2.verifyAfterSeconds",
   RELAY_PULSE_MODE: "relay.pulseMode",
   RELAY_PULSE_MS: "relay.pulseMs",
   RELAY_RELEASE_MS: "relay.releaseMs",
@@ -218,7 +241,96 @@ export function isLanHost(host: string): boolean {
   return false;
 }
 
+/** One configured door: its id, what the configuration names explicitly, and its timings. */
+export interface DoorSpec {
+  /** `d1`, `d2`, … by position. Stable for an install because the configuration is (ADR-0020). */
+  id: string;
+  name?: string;
+  relayId?: string;
+  outputId?: number;
+  sensorId?: string;
+  interiorCameraId?: string;
+  drivewayCameraId?: string;
+  travelSeconds: number;
+  verifyAfterSeconds: number;
+}
+
+export const doorIdAt = (index: number): string => `d${index + 1}`;
+
+const MAPPING_KEYS = ["name", "relayId", "outputId", "sensorId", "interiorCameraId", "drivewayCameraId"] as const;
+
+/**
+ * The doors this configuration describes. A 0.5-style configuration (`DOOR_*` only, or nothing at all) is
+ * exactly one door, `d1`, which may still be discovered or restored from the saved mapping. Any further door
+ * is only ever what was written down.
+ */
+export function doorSpecs(cfg: Config): DoorSpec[] {
+  const listed = cfg.doors ?? [];
+  const door2Set = MAPPING_KEYS.some((k) => cfg.door2[k] !== undefined);
+  const count = Math.max(1, listed.length, door2Set ? 2 : 1);
+  const specs: DoorSpec[] = [];
+  for (let i = 0; i < count; i++) {
+    const base = listed[i] ?? {};
+    const over = i === 0 ? cfg.door : i === 1 ? cfg.door2 : {};
+    const spec: DoorSpec = {
+      id: doorIdAt(i),
+      travelSeconds: (i === 1 ? cfg.door2.travelSeconds : undefined) ?? base.travelSeconds ?? cfg.door.travelSeconds,
+      verifyAfterSeconds: (i === 1 ? cfg.door2.verifyAfterSeconds : undefined) ?? base.verifyAfterSeconds ?? cfg.door.verifyAfterSeconds,
+    };
+    for (const k of MAPPING_KEYS) {
+      const v = (over as Partial<DoorSpec>)[k] ?? base[k];
+      if (v !== undefined) (spec as unknown as Record<string, unknown>)[k] = v;
+    }
+    specs.push(spec);
+  }
+  return specs;
+}
+
+/** `LPR_KNOWN_PLATES` entries: `ABC123` belongs to `d1` as before, `ABC123:d2` to the named door. */
+export function platesByDoor(entries: string[]): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const entry of entries) {
+    const m = /^(.*):\s*(d[1-9]\d*)\s*$/i.exec(entry);
+    const doorId = m ? m[2]!.toLowerCase() : doorIdAt(0);
+    const plate = (m ? m[1]! : entry).trim();
+    if (!plate) continue;
+    out.set(doorId, [...(out.get(doorId) ?? []), plate]);
+  }
+  return out;
+}
+
+function validateDoors(cfg: Config): void {
+  const specs = doorSpecs(cfg);
+  const env = (i: number, key: string) => (i === 0 ? `DOOR_${key}` : i === 1 ? `DOOR2_${key}` : `doors[${i}].${key}`);
+  // The two-door simulator has a fixed mapping, so there DOOR2_NAME alone is a complete second door.
+  const simulated = cfg.bridge.mode === "mock" && cfg.bridge.mockDoors > 1;
+  specs.forEach((d, i) => {
+    if (i === 0 || simulated) return; // d1 may be discovered or restored from the saved mapping
+    const missing = [d.relayId === undefined && env(i, "RELAY_ID"), d.outputId === undefined && env(i, "OUTPUT_ID"), d.sensorId === undefined && env(i, "SENSOR_ID")].filter(Boolean);
+    if (missing.length) {
+      throw new Error(
+        `door ${d.id} is incomplete: set ${missing.join(", ")}. A second door is never guessed: it needs its relay output and its own garage-mounted sensor written down (GET /v1/discovery lists the ids).`,
+      );
+    }
+  });
+  for (let i = 0; i < specs.length; i++) {
+    for (let j = i + 1; j < specs.length; j++) {
+      const a = specs[i]!;
+      const b = specs[j]!;
+      if (a.sensorId !== undefined && a.sensorId === b.sensorId) throw new Error(`doors ${a.id} and ${b.id} name the same sensor (${env(j, "SENSOR_ID")}): every door needs its own`);
+      if (a.relayId !== undefined && a.relayId === b.relayId && a.outputId !== undefined && a.outputId === b.outputId) {
+        throw new Error(`doors ${a.id} and ${b.id} name the same relay output (${env(j, "OUTPUT_ID")}): one output moves one door`);
+      }
+    }
+  }
+  const doorCount = cfg.bridge.mode === "mock" ? Math.max(specs.length, cfg.bridge.mockDoors) : specs.length;
+  for (const doorId of platesByDoor(cfg.lpr.knownPlates).keys()) {
+    if (Number(doorId.slice(1)) > doorCount) throw new Error(`LPR_KNOWN_PLATES ties a plate to ${doorId}, but this install has ${doorCount} door${doorCount === 1 ? "" : "s"}`);
+  }
+}
+
 export function validateMode(cfg: Config): void {
+  validateDoors(cfg);
   if (cfg.bridge.mode === "live") {
     if (!cfg.protect.url || !cfg.protect.apiKey) throw new Error("live mode requires PROTECT_URL and PROTECT_API_KEY");
     if (cfg.bridge.tokens.length === 0) throw new Error("live mode requires at least one BRIDGE_TOKENS entry");

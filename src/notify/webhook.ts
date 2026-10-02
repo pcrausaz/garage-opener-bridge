@@ -32,12 +32,14 @@ export class OutboundWebhook implements NotificationTransport {
     this.fetchImpl = o.fetchImpl ?? fetch;
   }
 
-  attach(bus: Bus): void {
-    bus.on("state", (s) => void this.send("door.state", s));
-    bus.on("command", (c) => void this.send("door.command", c));
-    bus.on("hold", (h) => void this.send("hold", h));
-    bus.on("vehicle", (v) => void this.send("vehicle", v));
-    bus.on("auto-action", (a) => void this.send("auto-action", a));
+  /** `doorId` is passed only on an install with more than one door: each event's `data` then says which. */
+  attach(bus: Bus, doorId?: string): void {
+    const tag = <T extends object>(data: T): T => (doorId ? { ...data, doorId } : data);
+    bus.on("state", (s) => void this.send("door.state", tag(s)));
+    bus.on("command", (c) => void this.send("door.command", tag(c)));
+    bus.on("hold", (h) => void this.send("hold", tag(h)));
+    bus.on("vehicle", (v) => void this.send("vehicle", tag(v)));
+    bus.on("auto-action", (a) => void this.send("auto-action", tag(a)));
   }
 
   notify(alert: Alert): Promise<void> {

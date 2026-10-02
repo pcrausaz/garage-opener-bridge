@@ -8,16 +8,20 @@ interface StoredHold {
   setAt: number;
 }
 
+/** Hold-open is per door: holding one door open does not silence the other's alerts. */
 export class HoldService {
   private timer: NodeJS.Timeout | null = null;
-  constructor(private readonly store: Store, private readonly bus: Bus, private readonly now: () => number = Date.now) {
+  /** `d1` keeps the key every install already has; other doors get their own. */
+  private readonly key: string;
+  constructor(private readonly store: Store, private readonly bus: Bus, private readonly now: () => number = Date.now, private readonly doorId = "d1") {
+    this.key = doorId === "d1" ? "hold" : `hold:${doorId}`;
     this.arm();
   }
 
   private stored(): StoredHold | null {
-    const h = this.store.get<StoredHold>("hold");
+    const h = this.store.get<StoredHold>(this.key);
     if (h && h.until > this.now()) return h;
-    if (h) this.store.delete("hold");
+    if (h) this.store.delete(this.key);
     return null;
   }
 
@@ -32,8 +36,8 @@ export class HoldService {
 
   set(minutes: number, source = "app", member?: string): Hold {
     const setAt = this.now();
-    this.store.set("hold", { until: setAt + minutes * 60_000, minutes, setAt } satisfies StoredHold);
-    this.store.audit({ kind: "hold", source, member, outcome: "ok", detail: `${minutes} min` });
+    this.store.set(this.key, { until: setAt + minutes * 60_000, minutes, setAt } satisfies StoredHold);
+    this.store.audit({ doorId: this.doorId, kind: "hold", source, member, outcome: "ok", detail: `${minutes} min` });
     const h = this.get();
     this.bus.emit("hold", h);
     this.arm();
@@ -42,11 +46,11 @@ export class HoldService {
 
   clear(source = "app", member?: string): void {
     const had = this.stored();
-    this.store.delete("hold");
+    this.store.delete(this.key);
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     if (had) {
-      this.store.audit({ kind: "hold", source, member, outcome: "ok", detail: "cleared" });
+      this.store.audit({ doorId: this.doorId, kind: "hold", source, member, outcome: "ok", detail: "cleared" });
       this.bus.emit("hold", { active: false });
     }
   }
@@ -56,7 +60,7 @@ export class HoldService {
     const h = this.stored();
     if (!h) return;
     this.timer = setTimeout(() => {
-      this.store.delete("hold");
+      this.store.delete(this.key);
       this.bus.emit("hold", { active: false });
     }, h.until - this.now());
     this.timer.unref?.();
