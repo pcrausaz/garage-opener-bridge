@@ -28,7 +28,7 @@ pnpm typecheck
 
 ## Things that are deliberately out of scope
 
-One door per bridge. UniFi Protect only. No Home Assistant integration. These aren't oversights, and a PR
+Live video (stills only). UniFi Protect only. No Home Assistant integration. These aren't oversights, and a PR
 adding them is unlikely to be merged — please open an issue first if you disagree.
 
 ## Licence

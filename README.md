@@ -75,6 +75,8 @@ bridge → console on 443, and console → bridge on 8787. Never forward a port 
 | | |
 |---|---|
 | Door | State machine on the sensor, verified open/close/stop, direction memory for a door stopped part-way |
+| Two doors | A second door on the relay's other output or on another relay, each with its own sensor, state, hold-open and alerts; a default door per phone |
+| Camera | A still from the door's interior camera, fetched by the bridge so the Protect key stays off the phones |
 | Alerts | Open too long, nightly check, vehicle-in-garage heuristic, hold-open to silence them |
 | Family | One-time invites, per-member tokens, rename and revoke, an activity log that names people |
 | Integrations | Bonjour discovery, Alarm Manager webhooks in, ntfy and HMAC-signed webhooks out, SSE event stream |
@@ -83,6 +85,51 @@ bridge → console on 443, and console → bridge on 8787. Never forward a port 
 The HTTP API is `contract/bridge.openapi.yaml`. A test diffs it against the routes the server actually
 registers, so the spec cannot quietly fall behind the implementation.
 
+## A second door
+
+One door needs no configuration at all, and nothing below applies to it.
+
+A USL-Relay has two outputs, so a two-car garage can run both doors from one bridge. **Each door needs its own
+garage-mounted sensor**: the sensor is what makes a command verifiable, so a door without one cannot be
+configured. The second door is never discovered or guessed — which sensor watches which door is exactly the
+kind of thing a guess gets wrong — so it is written down:
+
+```bash
+DOOR2_RELAY_ID=...        # the same relay as door 1 when you use its second output
+DOOR2_OUTPUT_ID=1         # "Output 02" in Protect's UI
+DOOR2_SENSOR_ID=...       # this door's own sensor
+DOOR_NAME=Left            # optional; default is the output's name in Protect
+DOOR2_NAME=Right
+DOOR2_INTERIOR_CAMERA_ID=...   # optional, and may be the same camera as door 1
+```
+
+With two door outputs and two garage sensors on the console, door 1 is no longer auto-paired either, so on a
+new install set `DOOR_RELAY_ID`, `DOOR_OUTPUT_ID` and `DOOR_SENSOR_ID` as well; an install that was already
+paired keeps its door 1. At startup the bridge logs a suggested pairing based on the device names, as lines
+ready to paste — check it against the actual doors first. `GET /v1/discovery` lists every id. A YAML config
+file can carry the same thing as a `doors:` list.
+
+Doors are `d1`, `d2` in configuration order. The API has a door-scoped form of every door route
+(`/v1/doors/{doorId}/state`, `/open`, `/close`, `/toggle`, `/stop`, `/hold`, `/camera/snapshot`), and
+`GET /v1/doors` lists them. The routes without a door id (`/v1/state`, `/v1/door/*`, `/v1/hold`, `/v1/events`)
+stay for good and mean *the caller's default door*: `d1` until `PUT /v1/doors/default` picks another, per
+phone. `/v1/events?doors=all` streams every door, each event carrying `doorId`. A licence plate can be tied
+to a door: `LPR_KNOWN_PLATES=ABC123,XYZ789:d2`.
+
+**Not verified on real hardware.** The reference install has one door and one sensor, so everything about a
+second door is tested against the simulator. In particular the real behaviour of output `1` on `activate`,
+and Alarm Manager payloads from a second sensor, are unconfirmed; the emulated press (`RELAY_PULSE_MODE`)
+applies to both outputs. If you run two doors, an issue saying how it went is very welcome.
+
+## Camera snapshot
+
+`GET /v1/camera/snapshot` (default door) and `GET /v1/doors/{doorId}/camera/snapshot` return a still from the
+door's interior camera (`DOOR_INTERIOR_CAMERA_ID`, or the one discovery picked). The bridge fetches it with
+its own API key and caches it per camera — 2 s while a door using that camera is moving, 10 s otherwise — so
+two doors sharing a camera, and every phone, cost the console one request. The response is `no-store` and
+carries `X-Snapshot-At`. Errors are distinct: 404 `no_camera`, 503 `camera_unavailable`, 502
+`camera_forbidden` (the key lacks camera permission), 429. Stills only; there is no video.
+
 ## Development
 
 ```bash
@@ -90,7 +137,12 @@ pnpm install
 pnpm test          # OpenAPI lint + generated-types drift check + unit, integration, contract and e2e suites
 pnpm typecheck
 BRIDGE_MODE=mock BRIDGE_TOKENS=demo-token-123 pnpm dev    # mock mode on :8787
+BRIDGE_MODE=mock MOCK_DOORS=2 BRIDGE_TOKENS=demo-token-123 pnpm dev    # …with a second door
 ```
+
+`MOCK_DOORS=2` gives the simulator a second relay output and its own sensor, sharing the two mock cameras.
+`POST /v1/mock/{action}` takes an optional `doorId` in the body. In mock mode the camera snapshot is a drawn
+garage that follows the simulated doors.
 
 `pnpm test:live` runs read-only checks against a real console and is opt-in; it is never run in CI. No test
 touches real hardware.
@@ -113,7 +165,7 @@ The **iOS and watchOS app** is closed source. The **cloud-alerts service** is to
 anyone's console, cannot actuate anything, and nobody can self-host it, since pushes need the app's APNs key.
 What it stores is set out at https://garageopener.app/privacy.
 
-Out of scope by design: more than one door per bridge, relays other than UniFi Protect's, Home Assistant.
+Out of scope by design: live video, relays other than UniFi Protect's, Home Assistant.
 
 ## Licence
 
