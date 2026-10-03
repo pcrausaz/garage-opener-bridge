@@ -10,6 +10,15 @@ This project is pre-1.0, so a minor bump may change behaviour. **Read this file 
 that requires you to touch your configuration is called out under **Action required**, and the bridge refuses
 to start with a message that names the fix rather than running in a degraded state.
 
+## 0.6.1 — 2026-10-03
+
+**Additive. No action needed.** Every route keeps its request shape; one response gains an optional field.
+
+- Added: each door in `GET /v1/doors` and in discovery's `doors` carries `cameraName`, what the console calls
+  the door's interior camera, taken from the bridge's last look at the console. For display only: the app
+  shows it in Settings → Doors instead of the tail of the camera's id. Absent when no camera is mapped or the
+  console has not listed it yet; an app that predates this field ignores it.
+
 ## 0.6.0 — 2026-10-03
 
 **Additive. No action needed for a one-door install**: with the configuration you have today the bridge

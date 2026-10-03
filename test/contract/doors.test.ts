@@ -31,8 +31,8 @@ describe("door-scoped routes match contract/bridge.openapi.yaml", () => {
     expect(v.validate("DoorList", r.json())).toEqual({ ok: true });
     expect(r.json()).toEqual({
       doors: [
-        { id: "d1", name: "Left Door", hasCamera: true, mapping: { ...SIM_IDS } },
-        { id: "d2", name: "Right Door", hasCamera: true, mapping: { ...SIM_IDS_2 } },
+        { id: "d1", name: "Left Door", hasCamera: true, cameraName: "Garage (mock)", mapping: { ...SIM_IDS } },
+        { id: "d2", name: "Right Door", hasCamera: true, cameraName: "Garage (mock)", mapping: { ...SIM_IDS_2 } },
       ],
       defaultDoorId: "d1",
     });
@@ -197,7 +197,7 @@ describe("door-scoped routes on a one-door bridge", () => {
   it("is a list of one door, d1, reachable by id too", async () => {
     const r = await app.inject({ method: "GET", url: "/v1/doors", headers: auth });
     expect(v.validate("DoorList", r.json())).toEqual({ ok: true });
-    expect(r.json()).toEqual({ doors: [{ id: "d1", name: "Garage Door", hasCamera: true, mapping: { ...SIM_IDS } }], defaultDoorId: "d1" });
+    expect(r.json()).toEqual({ doors: [{ id: "d1", name: "Garage Door", hasCamera: true, cameraName: "Garage (mock)", mapping: { ...SIM_IDS } }], defaultDoorId: "d1" });
     expect((await app.inject({ method: "GET", url: "/v1/doors/d1/state", headers: auth })).json()).toMatchObject({ doorId: "d1", door: "CLOSED" });
     expect((await app.inject({ method: "GET", url: "/v1/doors/d2/state", headers: auth })).statusCode).toBe(404);
     expect((await app.inject({ method: "PUT", url: "/v1/doors/default", headers: auth, payload: { doorId: "d2" } })).statusCode).toBe(400);

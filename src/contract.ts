@@ -866,6 +866,12 @@ export interface components {
             name: string;
             /** @description An interior camera is mapped, so `…/camera/snapshot` can answer */
             hasCamera: boolean;
+            /**
+             * @description What the console calls the mapped interior camera, from the bridge's last look at the console
+             *     (bridges from 0.6.1). For display only: it can be renamed in Protect at any time. Absent when no
+             *     camera is mapped or the console has not listed it yet.
+             */
+            cameraName?: string;
             mapping?: components["schemas"]["DoorMapping"];
         };
         DoorList: {

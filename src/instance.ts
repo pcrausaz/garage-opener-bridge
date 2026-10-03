@@ -314,8 +314,13 @@ export class Instance {
     return id === doorIdAt(0) ? "Garage door" : `Garage door ${id.slice(1)}`;
   }
 
+  /** Each door with the console's name for its interior camera, when the last discovery listed it (display only). */
   doorList(): Door[] {
-    return this.units.map((u) => ({ id: u.id, name: this.doorName(u.id), hasCamera: !!u.mapping.interiorCameraId, mapping: u.mapping }));
+    return this.units.map((u) => {
+      const cameraId = u.mapping.interiorCameraId;
+      const cameraName = cameraId ? this.discovery?.cameras.find((c) => c.id === cameraId)?.name : undefined;
+      return { id: u.id, name: this.doorName(u.id), hasCamera: !!cameraId, ...(cameraName ? { cameraName } : {}), mapping: u.mapping };
+    });
   }
 
   /**

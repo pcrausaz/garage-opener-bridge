@@ -40,8 +40,8 @@ describe("two doors, one bridge (ADR-0020)", () => {
   it("ids are d1, d2 by position; names default to the relay outputs'; both doors may share a camera", async () => {
     await boot();
     expect(inst.doorList()).toEqual([
-      { id: "d1", name: "Left Door", hasCamera: true, mapping: { ...SIM_IDS } },
-      { id: "d2", name: "Right Door", hasCamera: true, mapping: { ...SIM_IDS_2 } },
+      { id: "d1", name: "Left Door", hasCamera: true, cameraName: "Garage (mock)", mapping: { ...SIM_IDS } },
+      { id: "d2", name: "Right Door", hasCamera: true, cameraName: "Garage (mock)", mapping: { ...SIM_IDS_2 } },
     ]);
     expect(inst.door).toBe(d1.door); // the instance's own door is still the first one
     expect(inst.unit("d2")).toBe(d2);
@@ -302,7 +302,7 @@ describe("one door, as before", () => {
   it("is a list of one, and its alerts do not name the door", async () => {
     const m = await mockInstance({}, { nativePulse: true });
     inst = m.inst;
-    expect(inst.doorList()).toEqual([{ id: "d1", name: "Garage Door", hasCamera: true, mapping: { ...SIM_IDS } }]);
+    expect(inst.doorList()).toEqual([{ id: "d1", name: "Garage Door", hasCamera: true, cameraName: "Garage (mock)", mapping: { ...SIM_IDS } }]);
     const p = inst.door.open({ source: "test" });
     await vi.advanceTimersByTimeAsync(TRAVEL);
     await p;
