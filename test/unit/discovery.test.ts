@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { discover, suggestMapping } from "../../src/discovery.js";
-import { ProtectSimulator, SIM_IDS } from "../../src/protect/simulator.js";
+import { deviceMacs, discover, listDevices, suggestMapping } from "../../src/discovery.js";
+import { ProtectSimulator, SIM_IDS, SIM_IDS_2, SIM_MACS } from "../../src/protect/simulator.js";
 import { loadFixture } from "../protect-mock-server.js";
 import type { ProtectCamera, ProtectRelay, ProtectSensor } from "../../src/protect/types.js";
 
@@ -38,5 +38,18 @@ describe("discovery", () => {
     expect(explicit.current).toMatchObject({ relayId: "x", outputId: 1, sensorId: "y", interiorCameraId: SIM_IDS.interiorCameraId });
     const saved = await discover(sim, { relayId: "s", outputId: 0, sensorId: "t", interiorCameraId: null, drivewayCameraId: null }, {});
     expect(saved.current?.relayId).toBe("s");
+  });
+
+  it("maps every sensor and camera to the MAC the console lists, normalised; the fixtures (MACs redacted) map nothing", async () => {
+    const macs = deviceMacs(await listDevices(new ProtectSimulator({ doors: 2 })));
+    expect([...macs]).toEqual([
+      [`sensor:${SIM_IDS.sensorId}`, SIM_MACS.sensors[0]],
+      [`sensor:${SIM_IDS_2.sensorId}`, SIM_MACS.sensors[1]],
+      [`camera:${SIM_IDS.interiorCameraId}`, SIM_MACS.interiorCamera],
+      [`camera:${SIM_IDS.drivewayCameraId}`, SIM_MACS.drivewayCamera],
+    ]);
+    expect(deviceMacs({ sensors: [{ ...loadFixture<ProtectSensor[]>("sensors.json")[0]!, mac: "f4:e2:c6:aa:bb:cc" }], cameras: loadFixture<ProtectCamera[]>("cameras.json") })).toEqual(
+      new Map([["sensor:" + loadFixture<ProtectSensor[]>("sensors.json")[0]!.id, "F4E2C6AABBCC"]]),
+    );
   });
 });

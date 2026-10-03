@@ -1,4 +1,4 @@
-import type { ProtectClient } from "./protect/types.js";
+import type { ProtectCamera, ProtectClient, ProtectRelay, ProtectSensor } from "./protect/types.js";
 import type { Door } from "./types.js";
 
 export interface DoorMapping {
@@ -82,8 +82,40 @@ export function pairingAsEnv(doors: DoorMapping[]): string[] {
   });
 }
 
-export async function discover(protect: ProtectClient, current: DoorMapping | null, explicit: Partial<DoorMapping>): Promise<DiscoveryResult> {
+/** The console's device listings as the client returns them, fetched once and read by more than one consumer. */
+export interface ProtectDevices {
+  relays: ProtectRelay[];
+  sensors: ProtectSensor[];
+  cameras: ProtectCamera[];
+}
+
+export async function listDevices(protect: ProtectClient): Promise<ProtectDevices> {
   const [relays, sensors, cameras] = await Promise.all([protect.getRelays(), protect.getSensors(), protect.getCameras()]);
+  return { relays, sensors, cameras };
+}
+
+export type DeviceKind = "sensor" | "camera";
+
+/** A MAC the way Alarm Manager writes it: 12 upper-case hex digits, no separators. */
+export const normalizeMac = (mac: string): string => mac.replace(/[^0-9a-f]/gi, "").toUpperCase();
+
+/**
+ * Which MAC each sensor and camera has, by `kind:id`. Alarm Manager names the device that fired by MAC, not by
+ * the id the listings and the configuration use, so routing an event to its door needs this map. Devices the
+ * listing shows without a MAC are simply absent from it.
+ */
+export function deviceMacs(d: Pick<ProtectDevices, "sensors" | "cameras">): Map<string, string> {
+  const out = new Map<string, string>();
+  const add = (kind: DeviceKind, list: { id: string; mac?: string }[]) => {
+    for (const x of list) if (typeof x.mac === "string" && x.mac) out.set(`${kind}:${x.id}`, normalizeMac(x.mac));
+  };
+  add("sensor", d.sensors);
+  add("camera", d.cameras);
+  return out;
+}
+
+export async function discover(protect: ProtectClient, current: DoorMapping | null, explicit: Partial<DoorMapping>, devices?: ProtectDevices): Promise<DiscoveryResult> {
+  const { relays, sensors, cameras } = devices ?? (await listDevices(protect));
   const base = {
     relays: relays.map((r) => ({
       id: r.id,

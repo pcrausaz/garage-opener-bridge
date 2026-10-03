@@ -3,8 +3,10 @@ import pino from "pino";
 import { mockInstance } from "../helpers.js";
 import { Instance, type DoorUnit } from "../../src/instance.js";
 import { makeConfig, type ConfigInput } from "../../src/config.js";
-import { ProtectSimulator, SIM_IDS, SIM_IDS_2 } from "../../src/protect/simulator.js";
+import { ProtectSimulator, SIM_IDS, SIM_IDS_2, SIM_MACS } from "../../src/protect/simulator.js";
 import { silentLogger } from "../../src/logger.js";
+import { classifyAlarmPayload } from "../../src/webhooks/classify.js";
+import { loadFixture } from "../protect-mock-server.js";
 
 const MIN = 60_000;
 const TRAVEL = 12_100; // travel 10 s + verify 2 s (test/helpers.ts)
@@ -153,6 +155,41 @@ describe("two doors, one bridge (ADR-0020)", () => {
       await event("vehicle-start", SIM_IDS.interiorCameraId);
       expect([d1.vehicle.isPresent(), d2.vehicle.isPresent()]).toEqual([true, true]);
       expect(inst.store.listAudit(1)[0]!.doorId).toBeUndefined(); // about both doors, so about neither
+    });
+
+    it("a sensor named by MAC, as Alarm Manager does, reaches the door that sensor watches", async () => {
+      await boot();
+      await event("opened", SIM_MACS.sensors[1]);
+      expect(doors()).toEqual(["CLOSED", "OPEN"]);
+      expect(inst.store.listAudit(1)[0]).toMatchObject({ kind: "webhook", doorId: "d2" });
+      // Separators and case are the console's business; the match is not.
+      await event("opened", SIM_MACS.sensors[0].toLowerCase().replace(/(..)(?=.)/g, "$1:"));
+      expect(doors()).toEqual(["OPEN", "OPEN"]);
+      await event("closed", "02-00-00-00-00-02");
+      expect(doors()).toEqual(["OPEN", "CLOSED"]);
+    });
+
+    it("a camera named by MAC feeds the doors that use it", async () => {
+      await boot();
+      await event("vehicle-start", SIM_MACS.interiorCamera);
+      expect([d1.vehicle.isPresent(), d2.vehicle.isPresent()]).toEqual([true, true]);
+      await event("vehicle-end", SIM_MACS.drivewayCamera); // not the interior camera: nothing changes
+      expect([d1.vehicle.isPresent(), d2.vehicle.isPresent()]).toEqual([true, true]);
+    });
+
+    it("the synthetic Alarm Manager payload routes by the MAC the device listing carries, refreshed on discovery", async () => {
+      await boot();
+      // The fixture names a sensor the simulator does not have. Once the console lists d2's sensor under that
+      // MAC (a swapped sensor, say), the next discovery picks it up and the payload lands on d2.
+      const [e] = classifyAlarmPayload(loadFixture("alarm-manager/synthetic-sensor-opened.json"));
+      expect(e).toMatchObject({ type: "opened", device: "F4E2C6AABBCC" });
+      await inst.onProtectEvent(e!);
+      expect(doors()).toEqual(["CLOSED", "CLOSED"]);
+      const listed = await inst.sim!.getSensors();
+      vi.spyOn(inst.sim!, "getSensors").mockResolvedValue(listed.map((x) => (x.id === SIM_IDS_2.sensorId ? { ...x, mac: "f4:e2:c6:aa:bb:cc" } : x)));
+      await inst.discoveryNow();
+      await inst.onProtectEvent(e!);
+      expect(doors()).toEqual(["CLOSED", "OPEN"]);
     });
 
     it("an event that names no device moves no door; the console is asked instead", async () => {

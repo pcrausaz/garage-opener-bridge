@@ -55,6 +55,13 @@ any app.
 - The database gains three nullable columns on first start. A 0.5.x bridge can still open the file, so
   rolling back needs nothing.
 
+### Fixed
+- **Alarm Manager events reach the right door.** Alarm Manager names the device that fired by MAC address,
+  and the bridge only compared it with the configured ids, so on a two-door bridge every sensor and camera
+  event was dropped. It now keeps each sensor's and camera's MAC from the device listing (refreshed whenever
+  discovery runs) and routes by either. A one-door install with its sensor named by MAC gains the instant
+  webhook edge it was meant to have; a device-less event still counts as its door, as before.
+
 ## 0.5.2 — 2026-09-22
 
 - Fixed: `selfhost/docker-compose.yml` would not start for anyone not using ntfy. The ntfy service required

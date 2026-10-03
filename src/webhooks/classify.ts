@@ -103,9 +103,10 @@ export function normalizePlate(p: string): string {
   return p.replace(/[^a-z0-9]/gi, "").toUpperCase();
 }
 
-/** Compare a device reference (id or MAC) loosely: case-insensitive, colons ignored. */
+/** Compare a device reference (id or MAC) loosely: case-insensitive, colons and dashes ignored. */
 export function deviceMatches(ref: string | undefined, ...candidates: (string | null | undefined)[]): boolean {
   if (!ref) return false;
-  const n = ref.replace(/:/g, "").toLowerCase();
-  return candidates.some((c) => c && c.replace(/:/g, "").toLowerCase() === n);
+  const norm = (s: string) => s.replace(/[:-]/g, "").toLowerCase();
+  const n = norm(ref);
+  return candidates.some((c) => c && norm(c) === n);
 }

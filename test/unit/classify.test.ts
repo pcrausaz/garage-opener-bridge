@@ -35,6 +35,7 @@ describe("alarm manager classifier", () => {
   it("normalizes plates and matches devices loosely", () => {
     expect(normalizePlate(" ab-c 123 ")).toBe("ABC123");
     expect(deviceMatches("f4:e2:c6:aa:bb:cc", "F4E2C6AABBCC")).toBe(true);
+    expect(deviceMatches("F4E2C6AABBCC", "f4-e2-c6-aa-bb-cc")).toBe(true);
     expect(deviceMatches("x", null, undefined, "y")).toBe(false);
   });
 });

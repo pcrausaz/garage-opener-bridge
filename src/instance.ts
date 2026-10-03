@@ -5,7 +5,7 @@ import type { Logger } from "./logger.js";
 import type { ProtectClient } from "./protect/types.js";
 import { HttpProtectClient } from "./protect/client.js";
 import { DEMO_PLATE, ProtectSimulator, SIM_IDS, SIM_IDS_2, type SimulatorOptions } from "./protect/simulator.js";
-import { discover, pairingAsEnv, type DiscoveryResult, type DoorMapping } from "./discovery.js";
+import { deviceMacs, discover, listDevices, pairingAsEnv, type DeviceKind, type DiscoveryResult, type DoorMapping } from "./discovery.js";
 import { Store } from "./store/db.js";
 import { AuditRetention } from "./store/retention.js";
 import { Bus } from "./events/bus.js";
@@ -73,6 +73,8 @@ export class Instance {
   startError: string | undefined;
   private protectLastOk: number | undefined;
   private pairingHintLogged = false;
+  /** `sensor:<id>` / `camera:<id>` → MAC, from the last discovery; Alarm Manager names devices by MAC. */
+  private macs = new Map<string, string>();
   private readonly specs: DoorSpec[];
   private readonly transports: NotificationTransport[];
   private readonly logger: Logger;
@@ -160,7 +162,9 @@ export class Instance {
     try {
       const meta = await this.protect.getMetaInfo();
       this.protectVersion = meta.applicationVersion;
-      this.discovery = await discover(this.protect, saved, explicit);
+      const devices = await listDevices(this.protect);
+      this.macs = deviceMacs(devices);
+      this.discovery = await discover(this.protect, saved, explicit, devices);
       this.protectOk = true;
       this.protectLastOk = Date.now();
     } catch (err) {
@@ -302,13 +306,14 @@ export class Instance {
 
   /**
    * Route a classified Protect event (webhook or mock) to the door, or doors, it is about. Alarm Manager
-   * says which sensor or camera fired; a camera that two doors share feeds both.
+   * says which sensor or camera fired, by MAC rather than by id, so the device is matched against both the
+   * configured id and the MAC the last discovery listed for it; a camera that two doors share feeds both.
    */
   async onProtectEvent(e: ClassifiedEvent): Promise<void> {
     // With one door an event that names no device can only be about that door. With more it cannot be routed.
     const anonymous = !e.device && this.units.length === 1;
-    const matches = (u: DoorUnit, id: string | null | undefined, kind: "sensor" | "camera") => anonymous || deviceMatches(e.device, id, this.discoveryMac(kind, id));
-    const forDoors = (pick: (u: DoorUnit) => string | null | undefined, kind: "sensor" | "camera") => this.units.filter((u) => matches(u, pick(u), kind));
+    const matches = (u: DoorUnit, id: string | null | undefined, kind: DeviceKind) => anonymous || deviceMatches(e.device, id, this.discoveryMac(kind, id));
+    const forDoors = (pick: (u: DoorUnit) => string | null | undefined, kind: DeviceKind) => this.units.filter((u) => matches(u, pick(u), kind));
     let targets: DoorUnit[] = [];
     switch (e.type) {
       case "opened":
@@ -349,8 +354,9 @@ export class Instance {
     }
   }
 
-  private discoveryMac(_kind: "sensor" | "camera", _id: string | null | undefined): string | undefined {
-    return undefined; // fixtures strip MACs; live discovery could map id→mac here in a later revision
+  /** The MAC the console listed for a device, so an event that names it by MAC finds the door it is about. */
+  private discoveryMac(kind: DeviceKind, id: string | null | undefined): string | undefined {
+    return id ? this.macs.get(`${kind}:${id}`) : undefined;
   }
 
   stateOf(unit: DoorUnit): State {
@@ -386,7 +392,9 @@ export class Instance {
   /** `current` is the given door's mapping (the caller's default door); `doors` lists them all. */
   async discoveryNow(unit: DoorUnit | undefined = this.units[0]): Promise<DiscoveryResult> {
     const saved = this.store.get<DoorMapping>("mapping");
-    this.discovery = await discover(this.protect, saved, {});
+    const devices = await listDevices(this.protect);
+    this.macs = deviceMacs(devices);
+    this.discovery = await discover(this.protect, saved, {}, devices);
     this.discovery.autoPaired = this.store.get<boolean>("autoPaired") === true;
     this.discovery.doors = this.doorList();
     return unit && unit !== this.units[0] ? { ...this.discovery, current: unit.mapping } : this.discovery;

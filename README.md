@@ -116,6 +116,12 @@ stay for good and mean *the caller's default door*: `d1` until `PUT /v1/doors/de
 phone. `/v1/events?doors=all` streams every door, each event carrying `doorId`. A licence plate can be tied
 to a door: `LPR_KNOWN_PLATES=ABC123,XYZ789:d2`.
 
+Alarm Manager names the device that fired by its MAC address, not by the id the configuration uses, so the
+bridge keeps the MAC of every sensor and camera from the device listing (refreshed on every discovery) and
+routes each webhook event to the door whose sensor or camera it names; a camera two doors share feeds both.
+With one door, an event that names no device at all is taken to be about that door; with two, it only makes
+the bridge re-read every door's sensor.
+
 **Not verified on real hardware.** The reference install has one door and one sensor, so everything about a
 second door is tested against the simulator. In particular the real behaviour of output `1` on `activate`,
 and Alarm Manager payloads from a second sensor, are unconfirmed; the emulated press (`RELAY_PULSE_MODE`)

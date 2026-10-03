@@ -20,6 +20,17 @@ export const SIM_IDS_2 = {
 } as const;
 
 /**
+ * The MACs the simulator's devices report, as a console would (`sensor:0` is `d1`'s sensor, `sensor:1` is
+ * `d2`'s). Locally administered addresses that belong to no hardware; Alarm Manager names the device that
+ * fired by MAC, and the simulator must let that path be exercised.
+ */
+export const SIM_MACS = {
+  sensors: ["020000000001", "020000000002"],
+  interiorCamera: "0200000000A1",
+  drivewayCamera: "0200000000A2",
+} as const;
+
+/**
  * The one plate the simulator's LPR rules know when `LPR_KNOWN_PLATES` is unset (mock mode). The app's Simulate
  * panel offers exactly this plate, and `docs/app-review-notes.md` quotes it: if the three drift apart, "Known
  * plate seen" silently does nothing on the public demo bridge.
@@ -244,6 +255,7 @@ export class ProtectSimulator extends EventEmitter implements ProtectClient {
     const two = this.doors.length > 1;
     return {
       id: i === 0 ? SIM_IDS.sensorId : SIM_IDS_2.sensorId,
+      mac: SIM_MACS.sensors[i]!,
       modelKey: "sensor",
       name: two ? `${i === 0 ? "Left" : "Right"} Door State (mock)` : "Garage Door State (mock)",
       type: "UFP-SENSE",
@@ -293,8 +305,8 @@ export class ProtectSimulator extends EventEmitter implements ProtectClient {
   }
   async getCameras(): Promise<ProtectCamera[]> {
     return [
-      { id: SIM_IDS.interiorCameraId, modelKey: "camera", name: "Garage (mock)", state: "CONNECTED", smartDetectSettings: { objectTypes: ["person", "vehicle"] } },
-      { id: SIM_IDS.drivewayCameraId, modelKey: "camera", name: "Driveway (mock)", state: "CONNECTED", smartDetectSettings: { objectTypes: ["person", "vehicle"] } },
+      { id: SIM_IDS.interiorCameraId, mac: SIM_MACS.interiorCamera, modelKey: "camera", name: "Garage (mock)", state: "CONNECTED", smartDetectSettings: { objectTypes: ["person", "vehicle"] } },
+      { id: SIM_IDS.drivewayCameraId, mac: SIM_MACS.drivewayCamera, modelKey: "camera", name: "Driveway (mock)", state: "CONNECTED", smartDetectSettings: { objectTypes: ["person", "vehicle"] } },
     ];
   }
   /** A drawn garage, never a photograph: every simulated door at the height it is at right now. */
