@@ -164,19 +164,21 @@ export const ENV_MAP: Record<string, string> = {
   EVENTS_WEBHOOK_SECRET: "events.webhookSecret",
 };
 
-const UNSAFE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
-
 function setPath(obj: Record<string, unknown>, path: string, value: unknown): void {
   const parts = path.split(".");
-  // Paths come from ENV_MAP, never from input; the guard keeps that true if a future caller is less careful.
-  if (parts.some((p) => UNSAFE_KEYS.has(p))) throw new Error(`refusing to set config path "${path}"`);
   let cur = obj;
-  for (let i = 0; i < parts.length - 1; i++) {
+  for (let i = 0; i < parts.length; i++) {
     const p = parts[i]!;
+    // Paths come from ENV_MAP, never from input; the check keeps that true if a future caller is less careful.
+    // Spelled out per segment, which is the guard CodeQL recognises (js/prototype-pollution-utility).
+    if (p === "__proto__" || p === "constructor" || p === "prototype") throw new Error(`refusing to set config path "${path}"`);
+    if (i === parts.length - 1) {
+      cur[p] = value;
+      return;
+    }
     if (typeof cur[p] !== "object" || cur[p] === null) cur[p] = {};
     cur = cur[p] as Record<string, unknown>;
   }
-  cur[parts[parts.length - 1]!] = value;
 }
 
 /** Accepts the usual copy-paste variants of a certificate fingerprint. */
