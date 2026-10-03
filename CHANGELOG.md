@@ -10,7 +10,7 @@ This project is pre-1.0, so a minor bump may change behaviour. **Read this file 
 that requires you to touch your configuration is called out under **Action required**, and the bridge refuses
 to start with a message that names the fix rather than running in a degraded state.
 
-## 0.6.0 — unreleased
+## 0.6.0 — 2026-10-03
 
 **Additive. No action needed for a one-door install**: with the configuration you have today the bridge
 behaves as 0.5.2 did, every existing route keeps its request and response shape, and `/healthz` is unchanged.
