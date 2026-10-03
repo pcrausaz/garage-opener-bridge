@@ -48,10 +48,23 @@ function asRecord(v: unknown): Record<string, unknown> | null {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
 }
 
+const SENSOR_WORDS = ["sensor", "contact", "door"];
+
+/** `word … needle`: the needle appears somewhere after the first of the words. Index arithmetic, since the key is
+ * webhook-supplied and `(a|b).*needle` backtracks polynomially on a long run of `door`s. */
+function sensorThen(k: string, needle: string): boolean {
+  let earliest = Infinity;
+  for (const w of SENSOR_WORDS) {
+    const i = k.indexOf(w);
+    if (i >= 0) earliest = Math.min(earliest, i + w.length);
+  }
+  return Number.isFinite(earliest) && k.indexOf(needle, earliest) >= 0;
+}
+
 function classifyKey(key: string, hints: string): ProtectEventType {
   const k = key.toLowerCase();
-  if (/(sensor|contact|door).*open|^open(ed)?$/.test(k)) return "opened";
-  if (/(sensor|contact|door).*clos|^clos(ed)?$/.test(k)) return "closed";
+  if (sensorThen(k, "open") || /^open(ed)?$/.test(k)) return "opened";
+  if (sensorThen(k, "clos") || /^clos(ed)?$/.test(k)) return "closed";
   if (/plate|lpr|license/.test(k)) return "plate";
   if (/vehicle|car/.test(k)) return /end|ended|stop|finish|leave|left/.test(k + " " + hints) ? "vehicle-end" : "vehicle-start";
   return "unknown";

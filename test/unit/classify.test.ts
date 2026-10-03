@@ -19,6 +19,18 @@ describe("alarm manager classifier", () => {
     expect(classifyAlarmPayload({ timestamp: 1758300000, alarm: { triggers: [{ key: "sensor_opened" }] } })[0]?.at).toBe(1758300000000);
   });
 
+  it("classifies keys by word order without backtracking on long inputs", () => {
+    const key = (k: string) => classifyAlarmPayload({ alarm: { triggers: [{ key: k }] } })[0]?.type;
+    expect(key("Garage Door Opened")).toBe("opened");
+    expect(key("contact-closed")).toBe("closed");
+    expect(key("open")).toBe("opened");
+    expect(key("closed")).toBe("closed");
+    expect(key("opened the sensor")).toBe("unknown"); // "open" before the sensor word is not "sensor … open"
+    const t = Date.now();
+    expect(key("door".repeat(20000) + "x")).toBe("unknown");
+    expect(Date.now() - t).toBeLessThan(200);
+  });
+
   it("degrades unknown shapes to unknown", () => {
     expect(classifyAlarmPayload({ hello: "world" })[0]?.type).toBe("unknown");
     expect(classifyAlarmPayload("garbage")[0]?.type).toBe("unknown");

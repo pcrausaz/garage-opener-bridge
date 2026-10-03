@@ -447,7 +447,10 @@ export async function buildServer(o: ServerOptions) {
     const name = rawName === undefined ? undefined : rawName.trim();
     const defaultDoorId = req.body?.defaultDoorId;
     if (defaultDoorId !== undefined && (typeof defaultDoorId !== "string" || !req.inst!.unit(defaultDoorId))) return err(reply, 400, "validation", "defaultDoorId must be one of the ids in GET /v1/doors");
-    const bridgeUrl = (req.body?.publicUrl ?? config.publicUrl ?? requestOrigin(req)).replace(/\/+$/, "");
+    const rawUrl = req.body?.publicUrl;
+    if (rawUrl !== undefined && (typeof rawUrl !== "string" || rawUrl.length > 2048)) return err(reply, 400, "validation", "publicUrl must be a string of at most 2048 chars");
+    let bridgeUrl = rawUrl ?? config.publicUrl ?? requestOrigin(req);
+    while (bridgeUrl.endsWith("/")) bridgeUrl = bridgeUrl.slice(0, -1);
     const inv = req.inst!.members.createInvite(req.member!.id, defaultDoorId);
     req.inst!.store.audit({ kind: "member", source: "admin", member: req.member!.name, outcome: "ok", detail: name ? `invite created for ${name}` : "invite created" });
     const expiresUnix = Math.floor(Date.parse(inv.expiresAt) / 1000);

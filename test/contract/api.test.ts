@@ -198,6 +198,8 @@ describe("bridge HTTP API matches contract/bridge.openapi.yaml", () => {
     expect(named.json().name).toBe("Margo Ô");
     expect(named.json().joinUrl.endsWith(`&n=${encodeURIComponent("Margo Ô")}`)).toBe(true);
     expect((await app.inject({ method: "POST", url: "/v1/invites", headers: admin, payload: { name: "" } })).statusCode).toBe(400);
+    expect((await app.inject({ method: "POST", url: "/v1/invites", headers: admin, payload: { publicUrl: 42 } })).statusCode).toBe(400);
+    expect((await app.inject({ method: "POST", url: "/v1/invites", headers: admin, payload: { publicUrl: "http://b" + "/".repeat(3000) } })).statusCode).toBe(400);
     expect((await app.inject({ method: "POST", url: "/v1/invites", headers: admin, payload: { name: "x".repeat(49) } })).statusCode).toBe(400);
 
     const bad = await app.inject({ method: "POST", url: `/v1/invites/${inv.json().code}/claim`, payload: {} });
