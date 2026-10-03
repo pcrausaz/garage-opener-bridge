@@ -10,6 +10,18 @@ This project is pre-1.0, so a minor bump may change behaviour. **Read this file 
 that requires you to touch your configuration is called out under **Action required**, and the bridge refuses
 to start with a message that names the fix rather than running in a degraded state.
 
+## 0.6.2 — 2026-10-03
+
+**Additive. No action needed.** No API change; the contract is the one 0.6.1 published.
+
+- Security: the Alarm Manager webhook classifier and the invite `publicUrl` handling no longer use regular
+  expressions that backtrack polynomially on attacker-supplied text (CodeQL `js/polynomial-redos`). The
+  classifier's result is unchanged; `publicUrl` in an invite body must now be a string of at most 2048
+  characters (400 otherwise, where a non-string previously produced a 500).
+- Hardening: the configuration path setter refuses `__proto__`, `constructor` and `prototype` segments. Not
+  reachable with the constant environment map, kept as a guard.
+- CI: the workflow token is read-only (`permissions: contents: read`).
+
 ## 0.6.1 — 2026-10-03
 
 **Additive. No action needed.** Every route keeps its request shape; one response gains an optional field.
