@@ -134,7 +134,9 @@ door's interior camera (`DOOR_INTERIOR_CAMERA_ID`, or the one discovery picked).
 its own API key and caches it per camera — 2 s while a door using that camera is moving, 10 s otherwise — so
 two doors sharing a camera, and every phone, cost the console one request. The response is `no-store` and
 carries `X-Snapshot-At`. Errors are distinct: 404 `no_camera`, 503 `camera_unavailable`, 502
-`camera_forbidden` (the key lacks camera permission), 429. Stills only; there is no video.
+`camera_forbidden` (the key lacks camera permission), 429 above 240 requests a minute per token (a household
+shares one token, and the cache answers most of those without touching the console). Stills only; there is
+no video.
 
 ## Development
 

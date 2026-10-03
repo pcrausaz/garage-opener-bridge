@@ -12,4 +12,10 @@ export interface BusEvents {
   "protect-event": [ClassifiedEvent];
 }
 
-export class Bus extends EventEmitter<BusEvents> {}
+export class Bus extends EventEmitter<BusEvents> {
+  /** `maxListeners` is per event name: every open event stream adds one listener for each, so it is set from the stream cap. */
+  constructor(maxListeners?: number) {
+    super();
+    if (maxListeners !== undefined) this.setMaxListeners(maxListeners);
+  }
+}

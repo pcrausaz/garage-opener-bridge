@@ -1,5 +1,5 @@
 import type { Logger } from "../logger.js";
-import type { Config } from "../config.js";
+import { DOOR_TIMING_DEFAULTS, type Config } from "../config.js";
 import type { ProtectClient, ProtectRelay, ProtectSensor } from "../protect/types.js";
 import type { Store } from "../store/db.js";
 import type { Bus } from "../events/bus.js";
@@ -88,7 +88,7 @@ export interface LiveDoorServiceDeps {
   mapping: DoorMapping;
   /** Recorded on every audit row this door writes; `d1` for the only door of a one-door install. */
   doorId?: string;
-  /** This door's own timings; default to `config.door`. */
+  /** This door's own timings; default to `config.door`, then to `DOOR_TIMING_DEFAULTS`. */
   travelSeconds?: number;
   verifyAfterSeconds?: number;
   now?: () => number;
@@ -123,7 +123,10 @@ export class LiveDoorService implements DoorService {
   constructor(private readonly d: LiveDoorServiceDeps) {
     this.mapping = d.mapping;
     this.doorId = d.doorId ?? "d1";
-    this.travelMs = ((d.travelSeconds ?? d.config.door.travelSeconds) + (d.verifyAfterSeconds ?? d.config.door.verifyAfterSeconds)) * 1000;
+    this.travelMs =
+      ((d.travelSeconds ?? d.config.door.travelSeconds ?? DOOR_TIMING_DEFAULTS.travelSeconds) +
+        (d.verifyAfterSeconds ?? d.config.door.verifyAfterSeconds ?? DOOR_TIMING_DEFAULTS.verifyAfterSeconds)) *
+      1000;
     this.now = d.now ?? Date.now;
     this.log = d.logger.child({ component: "door" });
     this.state = initialDoorState(this.now());

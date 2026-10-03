@@ -2,13 +2,15 @@ import { describe, expect, it } from "vitest";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadConfig, makeConfig } from "../../src/config.js";
+import { doorSpecs, loadConfig, makeConfig } from "../../src/config.js";
 
 describe("config", () => {
   it("applies defaults and parses env types", () => {
     const c = loadConfig({ BRIDGE_MODE: "mock", DOOR_TRAVEL_SECONDS: "20", FEATURES_LPR: "true", LPR_KNOWN_PLATES: "abc 123, XYZ-9", BRIDGE_TOKENS: "aaaaaaaa, bbbbbbbb" });
     expect(c.door.travelSeconds).toBe(20);
-    expect(c.door.verifyAfterSeconds).toBe(3);
+    // Unset timings stay unset in the configuration so env and YAML can be told apart; the door gets the default.
+    expect(c.door.verifyAfterSeconds).toBeUndefined();
+    expect(doorSpecs(c)[0]).toMatchObject({ travelSeconds: 20, verifyAfterSeconds: 3 });
     expect(c.features.lpr).toBe(true);
     expect(c.lpr.knownPlates).toEqual(["abc 123", "XYZ-9"]);
     expect(c.bridge.tokens).toEqual(["aaaaaaaa", "bbbbbbbb"]);

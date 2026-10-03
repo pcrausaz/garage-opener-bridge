@@ -19,7 +19,7 @@ import { NtfyTransport } from "./notify/ntfy.js";
 import { OutboundWebhook } from "./notify/webhook.js";
 import type { NotificationTransport } from "./notify/transport.js";
 import { SnapshotCache } from "./camera/snapshots.js";
-import { deviceMatches, type ClassifiedEvent } from "./webhooks/classify.js";
+import { deviceMatches, normalizePlate, type ClassifiedEvent } from "./webhooks/classify.js";
 import { VERSION } from "./version.js";
 import { MembersService } from "./members.js";
 import { iso, type CommandResult, type Door, type Health, type State } from "./types.js";
@@ -44,7 +44,7 @@ export interface DoorUnit {
 /** One fully wired bridge: live mode has exactly one; mock mode has one per bearer token. */
 export class Instance {
   /** The first door's bus, and where inbound Protect events arrive whichever door they are for. */
-  readonly bus = new Bus();
+  readonly bus: Bus;
   readonly store: Store;
   readonly protect: ProtectClient;
   readonly sim: ProtectSimulator | null;
@@ -52,7 +52,12 @@ export class Instance {
   readonly retention: AuditRetention;
   readonly snapshots: SnapshotCache;
   /** `changed` (member id) when a caller picks another default door; open event streams follow it. */
-  readonly defaults = new EventEmitter<{ changed: [string] }>();
+  readonly defaults: EventEmitter<{ changed: [string] }>;
+  /**
+   * Every open event stream listens on a door's bus and, when it follows the caller's default door, on
+   * `defaults` too, so the cap on listeners is the cap on streams plus the bridge's own few per event.
+   */
+  private readonly maxListeners: number;
   /** Every door, `d1` first. Empty until start() completed. */
   units: DoorUnit[] = [];
   // The first door's parts. A one-door install has nothing else, which is why these keep their old names.
@@ -88,8 +93,12 @@ export class Instance {
   ) {
     this.logger = logger;
     this.log = logger.child({ component: "instance", label: opts.label ?? mode });
+    this.maxListeners = config.sse.maxTotal + 8;
+    this.bus = new Bus(this.maxListeners);
+    this.defaults = new EventEmitter<{ changed: [string] }>();
+    this.defaults.setMaxListeners(this.maxListeners);
     if (mode === "mock") {
-      this.sim = opts.protect ? null : new ProtectSimulator({ travelMs: config.door.travelSeconds * 1000, doors: config.bridge.mockDoors, ...(opts.simulator ?? {}) });
+      this.sim = opts.protect ? null : new ProtectSimulator({ travelMs: doorSpecs(config)[0]!.travelSeconds * 1000, doors: config.bridge.mockDoors, ...(opts.simulator ?? {}) });
       this.protect = opts.protect ?? this.sim!;
       this.store = new Store(opts.storeFile ?? ":memory:");
     } else {
@@ -128,15 +137,17 @@ export class Instance {
   /** The doors of this instance. A two-door simulator has a fixed mapping; everything else is the configuration. */
   private resolveSpecs(): DoorSpec[] {
     const c = this.config;
-    if (!this.sim || this.sim.doors.length < 2) return doorSpecs(c);
+    const configured = doorSpecs(c);
+    if (!this.sim || this.sim.doors.length < 2) return configured;
+    const first = configured[0]!;
     return [SIM_IDS, SIM_IDS_2].map((ids, i) => {
       const named = i === 0 ? c.door : c.door2;
       return {
         id: doorIdAt(i),
         ...(named.name ? { name: named.name } : {}),
         ...ids,
-        travelSeconds: named.travelSeconds ?? c.door.travelSeconds,
-        verifyAfterSeconds: named.verifyAfterSeconds ?? c.door.verifyAfterSeconds,
+        travelSeconds: (i === 0 ? undefined : named.travelSeconds) ?? first.travelSeconds,
+        verifyAfterSeconds: (i === 0 ? undefined : named.verifyAfterSeconds) ?? first.verifyAfterSeconds,
       };
     });
   }
@@ -183,7 +194,8 @@ export class Instance {
     this.store.set("mapping", mapping);
     if (this.discovery?.autoPaired) this.store.set("autoPaired", true);
     if (this.ready) return;
-    const plates = platesByDoor(this.mode === "mock" && c.lpr.knownPlates.length === 0 ? [DEMO_PLATE] : c.lpr.knownPlates);
+    // The demo plate is known at every simulated door: the Simulate panel offers it for whichever door is shown.
+    const plates = platesByDoor(this.mode === "mock" && c.lpr.knownPlates.length === 0 ? this.specs.map((s) => `${DEMO_PLATE}:${s.id}`) : c.lpr.knownPlates);
     const units: DoorUnit[] = [];
     this.units = units;
     for (const [i, spec] of this.specs.entries()) units.push(await this.startUnit(spec, mappings[i]!, i, plates.get(spec.id) ?? []));
@@ -200,7 +212,7 @@ export class Instance {
     const c = this.config;
     const multi = this.specs.length > 1;
     const logger = multi ? this.log.child({ door: spec.id }) : this.log;
-    const bus = index === 0 ? this.bus : new Bus();
+    const bus = index === 0 ? this.bus : new Bus(this.maxListeners);
     if (index > 0) this.webhook?.attach(bus, spec.id);
     const unit = {
       id: spec.id,
@@ -219,7 +231,9 @@ export class Instance {
     });
     let lastDoor: string | undefined;
     bus.on("state", (s) => {
-      this.protectOk = s.connectionOk;
+      // One console, polled once per door: it is reachable for /healthz only when every door can reach it.
+      // (This unit is not in `units` yet while it starts, so its own answer comes from the event.)
+      this.protectOk = s.connectionOk && this.units.every((u) => u === unit || u.door.snapshot().connectionOk);
       if (s.connectionOk) this.protectLastOk = Date.now();
       // A picture taken before the door changed state shows the door as it was.
       if (s.door !== lastDoor && mapping.interiorCameraId) this.snapshots.invalidate(mapping.interiorCameraId);
@@ -427,10 +441,15 @@ export class Instance {
         unit.vehicle.force(false, at);
         this.store.audit({ doorId: unit.id, kind: "mock", source: "mock", outcome: "ok", detail: "vehicle-left" });
         break;
-      case "plate-seen":
+      case "plate-seen": {
         if (!body.plate) throw new RangeError("plate is required");
-        await this.onProtectEvent({ type: "plate", device: SIM_IDS.drivewayCameraId, plate: body.plate, at, source: "mock" });
+        // Straight to this door's plate rules, like `vehicle-arrived`: the driveway camera both simulated doors
+        // share would report the plate to both, and the answer would be the other door's.
+        const plate = normalizePlate(body.plate);
+        this.store.audit({ doorId: unit.id, kind: "mock", source: "mock", outcome: "ok", detail: `plate ${unit.mapping.drivewayCameraId ?? SIM_IDS.drivewayCameraId} ${plate}` });
+        await unit.lpr?.onPlateSeen(plate);
         break;
+      }
       case "reverse-next-close":
         simDoor.reverseNextClose = true;
         this.store.audit({ doorId: unit.id, kind: "mock", source: "mock", outcome: "ok", detail: "reverse-next-close armed" });

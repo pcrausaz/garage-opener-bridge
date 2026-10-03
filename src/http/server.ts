@@ -301,7 +301,8 @@ export async function buildServer(o: ServerOptions) {
     const s = await req.inst!.snapshots.get(cameraId);
     return reply.header("content-type", s.contentType).header("cache-control", "no-store").header("x-snapshot-at", iso(s.at)).send(s.body);
   };
-  const snapshotLimit = { max: 120, timeWindow: "1 minute" };
+  // Per token, and a household shares one: four phones refreshing a picture every few seconds must fit.
+  const snapshotLimit = { max: 240, timeWindow: "1 minute" };
   app.get("/v1/camera/snapshot", { config: { operationId: "getCameraSnapshot", rateLimit: snapshotLimit } }, async (req, reply) => snapshot(defaultDoor(req), req, reply));
   app.get<{ Params: { doorId: string } }>("/v1/doors/:doorId/camera/snapshot", { config: { operationId: "getDoorCameraSnapshot", rateLimit: snapshotLimit } }, async (req, reply) => {
     const t = doorById(req, reply);

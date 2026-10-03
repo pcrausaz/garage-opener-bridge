@@ -54,6 +54,11 @@ any app.
   changes.
 - The database gains three nullable columns on first start. A 0.5.x bridge can still open the file, so
   rolling back needs nothing.
+- `/healthz` `protect.ok` is true only when every door can reach the console; it used to be whichever door
+  reported last. The JSON shape is unchanged.
+- The camera snapshot limit is 240 requests a minute per token (was 120): a household shares one token.
+- `DOOR_TRAVEL_SECONDS` / `DOOR_VERIFY_AFTER_SECONDS` now win over `doors[0].travelSeconds` in the YAML
+  file, as documented. The defaults (15 s, 3 s) are unchanged.
 
 ### Fixed
 - **Alarm Manager events reach the right door.** Alarm Manager names the device that fired by MAC address,
@@ -61,6 +66,10 @@ any app.
   event was dropped. It now keeps each sensor's and camera's MAC from the device listing (refreshed whenever
   discovery runs) and routes by either. A one-door install with its sensor named by MAC gains the instant
   webhook edge it was meant to have; a device-less event still counts as its door, as before.
+- Mock mode: `POST /v1/mock/plate-seen` with a `doorId` reports the plate at that door; it always went to
+  door 1 and answered with the named door's state. The demo plate is known at every simulated door.
+- Opening more than ten event streams on a door no longer logs `MaxListenersExceededWarning`; the listener
+  cap follows `SSE_MAX_TOTAL`.
 
 ## 0.5.2 — 2026-09-22
 

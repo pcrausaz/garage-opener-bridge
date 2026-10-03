@@ -58,6 +58,24 @@ describe("doors in the configuration (ADR-0020)", () => {
     expect(doorSpecs(mock({ DOOR2_NAME: "Margo's side", DOOR_SENSOR_ID: "s9" }, file)).map((s) => [s.name, s.sensorId])).toEqual([["Left", "s9"], ["Margo's side", "s2"]]);
   });
 
+  it("DOOR_TRAVEL_SECONDS wins over doors[0].travelSeconds in the file; the file wins over the defaults", () => {
+    const file = join(mkdtempSync(join(tmpdir(), "go-doors-")), "config.yaml");
+    writeFileSync(
+      file,
+      [
+        "bridge: { mode: mock }",
+        "doors:",
+        "  - { relayId: r, outputId: 0, sensorId: s1, travelSeconds: 22, verifyAfterSeconds: 5 }",
+        "  - { relayId: r, outputId: 1, sensorId: s2 }",
+        "",
+      ].join("\n"),
+    );
+    const timings = (env: Record<string, string>) => doorSpecs(mock(env, file)).map((s) => [s.travelSeconds, s.verifyAfterSeconds]);
+    expect(timings({})).toEqual([[22, 5], [22, 5]]);
+    expect(timings({ DOOR_TRAVEL_SECONDS: "9" })).toEqual([[9, 5], [9, 5]]);
+    expect(timings({ DOOR_VERIFY_AFTER_SECONDS: "1", DOOR2_TRAVEL_SECONDS: "30" })).toEqual([[22, 1], [30, 1]]);
+  });
+
   it("MOCK_DOORS is 1 or 2", () => {
     expect(mock({ MOCK_DOORS: "2" }).bridge.mockDoors).toBe(2);
     expect(() => mock({ MOCK_DOORS: "3" })).toThrow();

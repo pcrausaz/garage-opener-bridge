@@ -63,12 +63,16 @@ export const ConfigSchema = z.object({
       mockDoors: int.pipe(z.number().min(1).max(2)).default(1),
     })
     .prefault({}),
-  /** The first door, `d1`. Its timings are also the default for every other door. */
+  /**
+   * The first door, `d1`. Its timings are also the default for every other door. They stay optional here so
+   * that `DOOR_TRAVEL_SECONDS` can be told apart from "nothing set": `doorSpecs()` applies `DOOR_TIMING_DEFAULTS`
+   * after the YAML list, where a schema default would have beaten `doors[0].travelSeconds` and lost to it.
+   */
   door: z
     .object({
       ...doorMappingShape,
-      travelSeconds: int.default(15),
-      verifyAfterSeconds: int.default(3),
+      travelSeconds: int.optional(),
+      verifyAfterSeconds: int.optional(),
     })
     .prefault({}),
   /** The second door, `d2` (`DOOR2_*`). Unlike `d1` it is never discovered: relay, output and sensor must all be named. */
@@ -257,6 +261,9 @@ export interface DoorSpec {
 
 export const doorIdAt = (index: number): string => `d${index + 1}`;
 
+/** What a door's timings are when nothing names them: 15 s of travel, then 3 s before the sensor is believed. */
+export const DOOR_TIMING_DEFAULTS = { travelSeconds: 15, verifyAfterSeconds: 3 } as const;
+
 const MAPPING_KEYS = ["name", "relayId", "outputId", "sensorId", "interiorCameraId", "drivewayCameraId"] as const;
 
 /**
@@ -272,10 +279,14 @@ export function doorSpecs(cfg: Config): DoorSpec[] {
   for (let i = 0; i < count; i++) {
     const base = listed[i] ?? {};
     const over = i === 0 ? cfg.door : i === 1 ? cfg.door2 : {};
+    // Precedence: this door's own `DOOR*_` setting, then its YAML entry, then `d1`'s settings (`DOOR_*` over
+    // `doors[0]`), then the defaults. An env setting is never shadowed by a YAML value, as documented.
+    const d1Travel = cfg.door.travelSeconds ?? listed[0]?.travelSeconds ?? DOOR_TIMING_DEFAULTS.travelSeconds;
+    const d1Verify = cfg.door.verifyAfterSeconds ?? listed[0]?.verifyAfterSeconds ?? DOOR_TIMING_DEFAULTS.verifyAfterSeconds;
     const spec: DoorSpec = {
       id: doorIdAt(i),
-      travelSeconds: (i === 1 ? cfg.door2.travelSeconds : undefined) ?? base.travelSeconds ?? cfg.door.travelSeconds,
-      verifyAfterSeconds: (i === 1 ? cfg.door2.verifyAfterSeconds : undefined) ?? base.verifyAfterSeconds ?? cfg.door.verifyAfterSeconds,
+      travelSeconds: (i === 1 ? cfg.door2.travelSeconds : undefined) ?? (i > 0 ? base.travelSeconds : undefined) ?? d1Travel,
+      verifyAfterSeconds: (i === 1 ? cfg.door2.verifyAfterSeconds : undefined) ?? (i > 0 ? base.verifyAfterSeconds : undefined) ?? d1Verify,
     };
     for (const k of MAPPING_KEYS) {
       const v = (over as Partial<DoorSpec>)[k] ?? base[k];

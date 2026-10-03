@@ -206,8 +206,12 @@ describe("two doors, one bridge (ADR-0020)", () => {
   it("a known plate tied to a door opens that door; an untied plate means d1", async () => {
     await boot({ lpr: { knownPlates: ["DEMO123", "TWO-222:d2"] } });
     expect([d1.lpr!.isKnown("TWO222"), d2.lpr!.isKnown("TWO222"), d2.lpr!.isKnown("DEMO123")]).toEqual([false, true, false]);
+    // The simulated plate is reported at the door it is asked for, and only there.
     await inst.mockAction("plate-seen", { plate: "two 222" });
+    expect(doors()).toEqual(["CLOSED", "CLOSED"]);
+    expect(await inst.mockAction("plate-seen", { plate: "two 222" }, d2, true)).toMatchObject({ door: "OPENING", relay: { outputId: 1 } });
     expect(doors()).toEqual(["CLOSED", "OPENING"]);
+    expect(inst.store.listAudit(5).find((r) => r.kind === "mock" && r.detail?.includes("plate"))).toMatchObject({ doorId: "d2", detail: `plate ${SIM_IDS.drivewayCameraId} TWO222` });
     expect(capture.alerts.map((a) => [a.rule, a.doorId, a.title])).toEqual([["lpr-auto-open", "d2", "Right Door: Opening the garage"]]);
     await vi.advanceTimersByTimeAsync(TRAVEL);
 
@@ -221,6 +225,13 @@ describe("two doors, one bridge (ADR-0020)", () => {
 
     await inst.mockAction("plate-seen", { plate: "DEMO123" });
     expect(doors()).toEqual(["OPENING", "CLOSED"]);
+  });
+
+  it("with no plates configured the demo plate is known at every simulated door", async () => {
+    await boot({ lpr: { knownPlates: [] } });
+    expect([d1.lpr!.isKnown("DEMO123"), d2.lpr!.isKnown("DEMO123")]).toEqual([true, true]);
+    expect(await inst.mockAction("plate-seen", { plate: "demo 123" }, d2, true)).toMatchObject({ door: "OPENING", relay: { outputId: 1 } });
+    expect(doors()).toEqual(["CLOSED", "OPENING"]);
   });
 
   it("audit rows say which door", async () => {
@@ -253,6 +264,30 @@ describe("two doors, one bridge (ADR-0020)", () => {
   it("/healthz content is unchanged: one warning however many doors are stuck", async () => {
     await boot();
     expect(Object.keys(inst.health()).sort()).toEqual(["mode", "ok", "protect", "ready", "version"]);
+  });
+
+  it("/healthz protect.ok is true only while every door can reach the console", async () => {
+    await boot();
+    expect(inst.health().protect.ok).toBe(true);
+    const real = inst.sim!.getSensor.bind(inst.sim!);
+    vi.spyOn(inst.sim!, "getSensor").mockImplementation(async (id) => {
+      if (id === SIM_IDS_2.sensorId) throw new Error("timeout");
+      return real(id);
+    });
+    for (let i = 0; i < 3; i++) await d2.door.refresh();
+    expect([d1.door.snapshot().connectionOk, d2.door.snapshot().connectionOk]).toEqual([true, false]);
+    expect(inst.health().protect.ok).toBe(false);
+    // The healthy door reporting in between does not paper over the other one.
+    await d1.door.refresh();
+    expect(inst.health().protect.ok).toBe(false);
+    vi.mocked(inst.sim!.getSensor).mockImplementation(real);
+    await d2.door.refresh();
+    expect(inst.health().protect.ok).toBe(true);
+  });
+
+  it("every bus, and the default-door notifier, accept as many listeners as there can be event streams", async () => {
+    await boot({ sse: { maxTotal: 40 } });
+    expect([d1.bus.getMaxListeners(), d2.bus.getMaxListeners(), inst.defaults.getMaxListeners()].every((n) => n > 40)).toBe(true);
   });
 });
 
