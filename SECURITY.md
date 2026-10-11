@@ -13,7 +13,7 @@ expect a reply in days rather than hours.
 tokens, and the published container image.
 
 **Also welcome at the same address**, though the source isn't here: the cloud-alerts service at
-`garage-alerts.liqpil.com`, and the iOS app.
+`alerts.garageopener.app`, and the iOS and Android apps.
 
 **Not in scope:** UniFi Protect itself (report those to Ubiquiti), and anything requiring physical access to
 a machine already running the bridge.
@@ -24,6 +24,10 @@ A review was carried out before this repository was published, covering authenti
 credential handling, resource exhaustion and the container image. Findings and fixes are in
 [`docs/security-review.md`](docs/security-review.md). It is published deliberately: it says what was looked
 for and what was found, including the things that were accepted rather than fixed.
+
+Known low-severity gaps found since then are tracked as public issues, with a workaround where there is one.
+Currently: [#5](https://github.com/pcrausaz/garage-opener-bridge/issues/5), where a revoked member's
+already-open event stream keeps running until it disconnects or the bridge restarts.
 
 ## If you run this
 
