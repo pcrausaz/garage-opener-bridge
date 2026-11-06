@@ -10,6 +10,22 @@ This project is pre-1.0, so a minor bump may change behaviour. **Read this file 
 that requires you to touch your configuration is called out under **Action required**, and the bridge refuses
 to start with a message that names the fix rather than running in a degraded state.
 
+## 0.6.3 — 2026-11-06
+
+**Dependency update. No action needed.** No API or configuration change; the contract is the one 0.6.1
+published.
+
+- Security: undici 7.30.1, the HTTP client the bridge uses to talk to your Protect console. It fixes several
+  advisories in which a malicious or compromised HTTPS server could crash the process or slip past a TLS check
+  (among them CVE-2026-87018 and CVE-2026-109383). The bridge's `PROTECT_TLS=fingerprint:` pin passes its own
+  connector rather than a TLS callback option, so it was not affected, and its test still passes.
+- Security: fastify 5.12.6 (GHSA-389g-gv7q-r4x8, header-name schemas). The bridge declares no such schema, so
+  it was not exposed; updated anyway. fast-uri, used by fastify's schema validation, moves to 3.1.9 / 4.2.3
+  for its URI-parsing advisories.
+- Dependencies: zod 4.6.6. Test tooling only, not in the image: vitest 4.1.12, vite 7.3.7.
+- Hardening: the configuration path guard from 0.6.2 is written so CodeQL recognises it. Same three segments
+  refused, no behaviour change.
+
 ## 0.6.2 — 2026-10-03
 
 **Additive. No action needed.** No API change; the contract is the one 0.6.1 published.
